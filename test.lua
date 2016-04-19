@@ -1,25 +1,26 @@
-local stronger = require "stronger"
-require "serialize"
-require "printr"
+local s = require "stronger"
 
-stronger.setup({ exposed = true })
+describe("class creation", function()
+	it("tests simple class creation", function()
+		s.class "Foo" {
+			item1 = s.int32,
+			item2 = s.float
+		}
 
-class("TempType").templates("T") {
-	val = "T"
-}
+		assert.is_true(s.Foo ~= nil)
+		assert.is_true(s.Foo.name == "Foo")
+		assert.is_true(s.Foo.members.item1 == s.int32)
+		assert.is_true(s.Foo.members.item2 == s.float)
+	end)
+	it("tests class instantiation", function()
+		local inst = s.Foo.new()
+		inst.item1 = 1337
+		inst.item2 = 3.14
 
-class("List").templates("ValueType", "V2") {
-	item = TempType("ValueType"),
-	--item2 = TempType("ValueType"),
-	item3 = TempType("V2"),
-	--values = array("ValueType")
-	test = "ValueType",
-	test2 = "V2"
-}
+		print(inst.item1, inst.item2)
 
-function List:init(size)
-
-end
-
-IntList = List(int32, float)
-local l = IntList.new()
+		assert.is_true(inst ~= nil)
+		assert.is_true(inst.item1 == 1337)
+		assert.is_true(inst.item2 == 3.14)
+	end)
+end)
