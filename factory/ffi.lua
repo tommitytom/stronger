@@ -3,14 +3,21 @@ local ffi = require "ffi"
 local ctypes = {}
 
 local function memberString(_type)
+	assert(_type.complete == true)
+
 	local def = ""
 	if _type.parent ~= nil then
 		def = def .. memberString(_type.parent)
 	end
 
-	for k, v in pairs(_type.members) do
-		local memberType = v.cName or v.name
-		def = def .. "\t" .. memberType .. " " .. k .. ";\n"
+	for i, v in ipairs(_type.members) do
+		local memberType = v.type.cName or v.type.name
+		if v.type.baseType == "array" then
+			local arrayType = v.type.templates[1].value
+			memberType = (arrayType.cName or arrayType.name) .. "*"
+		end
+
+		def = def .. "\t" .. memberType .. " " .. v.name .. ";\n"
 	end
 
 	return def
@@ -49,9 +56,9 @@ local function addCType(_type)
 		end
 	end
 
-	for k, v in pairs(_type.members) do
-		if v.baseType == "class" and ctypes[v.name] == nil then
-			addCType(v)
+	for i, v in ipairs(_type.members) do
+		if v.type.baseType == "class" and ctypes[v.type.name] == nil then
+			addCType(v.type)
 		end
 	end
 
@@ -100,6 +107,7 @@ end
 local function registerSystemType(_type)
 	if _type.ctype ~= nil then
 		ffi.cdef("typedef " .. _type.ctype .. " " .. _type.name .. ";")
+		assert(_type.size == ffi.sizeof(_type.ctype), "Size mismatch for " .. _type.name .. ": Def - " .. _type.size .. "   C - " .. ffi.sizeof(_type.name))
 	end
 end
 

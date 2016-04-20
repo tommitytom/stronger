@@ -3,22 +3,23 @@ require "printr"
 
 stronger.setup({ exposed = true })
 
-class("TempType").templates("T") {
-	val = "T"
+class("BaseBase").templates("BaseBaseValueType") {
+	basebaseval = "BaseBaseValueType"
 }
 
-class("List").templates("ValueType", "V2") {
-	item = TempType("ValueType"),
-	--item2 = TempType("ValueType"),
-	item3 = TempType("V2"),
-	--values = array("ValueType")
-	test = "ValueType",
-	test2 = "V2"
+class("Base").templates("BaseValueType") {
+	baseval = BaseBase("BaseValueType")
 }
 
-function List:init(size)
+class("Nest").templates("NestValueType") {
+	nestval = Base("NestValueType")
+}
 
-end
+print_r(Nest(int32))
+Nest(int32).new()
 
-IntList = List(int32, float)
-local l = IntList.new()
+--[[class("Nest").templates("NestValueType") {
+	nestval = Base("NestValueType")
+}
+
+Nest(int32).new()]]

@@ -1,4 +1,4 @@
-local factory = require "factory.default"
+local factory = require "factory.ffi"
 
 local stronger = { }
 
@@ -22,9 +22,10 @@ local function cloneTable(t)
 	return ct
 end
 
-local function createTemplateType(name, default)
+local function createTemplateType(name, value, default)
 	return {
 		name = name,
+		value = value,
 		default = default,
 		baseType = "template"
 	}
@@ -35,7 +36,8 @@ local function createSystemType(name, size, ctype)
 		name = name,
 		size = size,
 		ctype = ctype,
-		baseType = "system"
+		baseType = "system",
+		complete = true
 	}
 
 	setmetatable(_type, {
@@ -86,8 +88,9 @@ end
 
 local function updateTypeSize(t)
 	t.size = 0
-	for k,v in pairs(t.members) do
-		t.size = t.size + v.size
+	for _, v in ipairs(t.members) do
+		assert(v.type.complete == true)
+		t.size = t.size + v.type.size
 	end
 end
 
@@ -114,7 +117,15 @@ local function cloneType(t)
 	local ct = cloneTable(t)
 	ct.members = cloneTable(t.members)
 	ct.templates = cloneTable(t.templates)
-	ct.base = t
+
+	for i, v in ipairs(ct.members) do
+		if v.type.baseType == "template" then
+			ct.members[i] = cloneTable(v)
+		end
+	end
+
+	ct.base = t.base or t
+
 	return ct
 end
 
@@ -126,7 +137,6 @@ local function bundleTemplateArgs(args, templates)
 	end
 
 	for i = #args + 1, #templates do
-		print(#args, #templates)
 		assert(templates[i].default ~= nil)
 		table.insert(templateArgs, templates[i].default)
 	end
@@ -135,61 +145,74 @@ local function bundleTemplateArgs(args, templates)
 end
 
 -- Resolve member variables that are templated types
-local function resolveTemplateMember(_type, lookup)
+local function resolveTemplateMember(member, lookup)
 	local templateParams = {}
-	for i, template in ipairs(_type.templates) do
-		assert(lookup[template.name] ~= nil, "Template argument '" .. template.name .. "' could not be found in the lookup")
-		table.insert(templateParams, lookup[template.name])
+	for i, template in ipairs(member.type.templates) do
+		local lookupName = template.name
+		if template.value ~= nil then
+			lookupName = template.value.name
+		end
+		
+		assert(lookup[lookupName] ~= nil, "Template argument '" .. lookupName .. "' could not be found in the lookup")
+		table.insert(templateParams, lookup[lookupName])
 	end
 
-	return _type(unpack(templateParams))
+	local memberType = member.type
+	if memberType.base ~= nil then
+		memberType = memberType.base
+	end
+
+	return { name = member.name, type = memberType(unpack(templateParams)) }
+end
+
+local function generateTemplateClassName(name, templates, lookup)
+	name = name .. "<"
+	for i, v in ipairs(templates) do
+		name = name .. (i > 1 and ", " or "") .. lookup[v.name].name
+	end
+
+	return name .. ">"
 end
 
 local function resolveTemplateArgs(t, ...)
 	if t.complete == false then
 		local args = {...}
 		if #args >= (#t.templates - t.templateDefaults) and #args <= #t.templates then
-			local complete = true
 			local templateArgs = bundleTemplateArgs(args, t.templates)
 			local ct = cloneType(t)
+			ct.complete = true
 
 			local lookup = {}
 			for i, arg in ipairs(templateArgs) do
 				local template = ct.templates[i]
 				if type(arg) == "string" then
-					complete = false	
-					arg = createTemplateType(arg)
+					arg = createTemplateType(arg, nil, template.default)
+					ct.templates[i] = createTemplateType(template.name, arg, template.default)
+					ct.complete = false
+				elseif arg.baseType == "template" then
+					arg = createTemplateType(template.name, arg.value, template.default)
 					ct.templates[i] = arg
+					ct.complete = false
+				else
+					ct.templates[i] = createTemplateType(template.name, arg, template.default)
 				end
 
 				lookup[template.name] = arg
-				
 			end
 
-			if complete == true then
-				ct.name = ct.name .. "<"
-				for i, v in ipairs(ct.templates) do
-					ct.name = ct.name .. (i > 1 and ", " or "") .. lookup[v.name].name
-				end
-
-				ct.name = ct.name .. ">"
-			end
-
-			print(ct.name)
-
-			for k, v in pairs(ct.members) do
-				if v.baseType == "template" then
-					assert(lookup[v.name] ~= nil, "Template argument '" .. v.name .. "' could not be found in the lookup")
-					ct.members[k] = lookup[v.name]
-				elseif v.baseType == "class" and v.complete == false then
-					ct.members[k] = resolveTemplateMember(v, lookup)
+			for i, v in ipairs(ct.members) do
+				if v.type.baseType == "template" then
+					assert(lookup[v.type.name] ~= nil, "Template argument '" .. v.type.name .. "' could not be found in the lookup")
+					ct.members[i] = { name = v.name, type = lookup[v.type.name] }
+				elseif (v.type.baseType == "class" or v.type.baseType == "array") and v.type.complete == false then
+					ct.members[i] = resolveTemplateMember(v, lookup)
 				end
 			end
 
-			ct.complete = complete
-			ct.cName = generateCName(ct.name)
-
-			if complete == true then
+			if ct.complete == true then
+				ct.name = generateTemplateClassName(ct.name, ct.templates, lookup)
+				ct.cName = generateCName(ct.name)
+				ct.base = nil -- Not important to us anymore!
 				updateTypeSize(ct)
 			end
 
@@ -263,11 +286,11 @@ local function class(name, super)
 				if type(v) == "string" then
 					local template = findTemplate(_type, v)
 					assert(template ~= nil)
-					members[k] = template
+					table.insert(_type.members, { name = k, type = template })
+				else 
+					table.insert(_type.members, { name = k, type = v })
 				end
 			end
-
-			_type.members = members
 
 			if _type.complete == true then
 				updateTypeSize(_type)
@@ -281,16 +304,14 @@ local function class(name, super)
 			end,
 
 			templates = function(...)
-				local defaultSet = false
 				for i,v in ipairs({...}) do
-					validateTemplate(v, defaultSet)
+					validateTemplate(v, _type.templateDefaults > 0)
 
 					local template
 					if type(v) == "string" then
 						template = createTemplateType(v)
 					else
-						template = createTemplateType(v[1], v[2])
-						defaultSet = true
+						template = createTemplateType(v[1], nil, v[2])
 						_type.templateDefaults = _type.templateDefaults + 1
 					end
 
@@ -345,6 +366,9 @@ initialize = function(_settings)
 	end
 
 	initialized = true
+
+	class("array").templates("T") { }
+	stronger.array.baseType = "array"
 
 	--class("array").templates("ValueType", { ["Size"] = 0 }) { }	
 	--class "array<ValueType, Size = 0>" { }
