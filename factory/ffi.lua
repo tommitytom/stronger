@@ -12,7 +12,7 @@ local function memberString(_type)
 
 	for i, v in ipairs(_type.members) do
 		local memberType = v.type.cName or v.type.name
-		if v.type.baseType == "array" then
+		if v.type.primitiveType == "array" then
 			local arrayType = v.type.templates[1].value
 			memberType = (arrayType.cName or arrayType.name) .. "*"
 		end
@@ -36,7 +36,7 @@ end
 
 local function buildMethodTable(t, mt)
 	if t.parent ~= nil then
-		buildMethodTable(t, mt)
+		buildMethodTable(t.parent, mt)
 	end
 
 	for k, v in pairs(t.methods) do
@@ -51,13 +51,13 @@ local function addCType(_type)
 
 	-- Make sure all parents and member types have been added to the ffi
 	if _type.parent ~= nil then
-		if _type.parent.baseType == "class" and ctypes[_type.parent.name] == nil then
-			addCType(v)
+		if _type.parent.primitiveType == "class" and ctypes[_type.parent.name] == nil then
+			addCType(_type.parent)
 		end
 	end
 
 	for i, v in ipairs(_type.members) do
-		if v.type.baseType == "class" and ctypes[v.type.name] == nil then
+		if v.type.primitiveType == "class" and ctypes[v.type.name] == nil then
 			addCType(v.type)
 		end
 	end

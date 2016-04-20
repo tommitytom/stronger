@@ -27,7 +27,7 @@ local function createTemplateType(name, value, default)
 		name = name,
 		value = value,
 		default = default,
-		baseType = "template"
+		primitiveType = "template"
 	}
 end
 
@@ -36,7 +36,7 @@ local function createSystemType(name, size, ctype)
 		name = name,
 		size = size,
 		ctype = ctype,
-		baseType = "system",
+		primitiveType = "system",
 		complete = true
 	}
 
@@ -78,7 +78,7 @@ local function validateTemplateArg(arg)
 	elseif type(arg) == "number" then
 		error("Number parameters are not supported yet")
 	elseif type(arg) == "table" then
-		if arg.baseType == nil then
+		if arg.primitiveType == nil then
 			error("Template argument must be a valid type")
 		end
 	else
@@ -102,14 +102,14 @@ local function createTypeTable(name, super)
 	return {  
 		name = name,
 		cName = generateCName(name),
-		parent = super,
+		parent = super or object,
 		members = {},
 		methods = {},
 		templates = {},
 		templateDefaults = 0,
 		complete = true,
 		size = 0,
-		baseType = "class"
+		primitiveType = "class"
 	}
 end
 
@@ -119,12 +119,12 @@ local function cloneType(t)
 	ct.templates = cloneTable(t.templates)
 
 	for i, v in ipairs(ct.members) do
-		if v.type.baseType == "template" then
+		if v.type.primitiveType == "template" then
 			ct.members[i] = cloneTable(v)
 		end
 	end
 
-	ct.base = t.base or t
+	ct.origin = t.origin or t
 
 	return ct
 end
@@ -158,8 +158,8 @@ local function resolveTemplateMember(member, lookup)
 	end
 
 	local memberType = member.type
-	if memberType.base ~= nil then
-		memberType = memberType.base
+	if memberType.origin ~= nil then
+		memberType = memberType.origin
 	end
 
 	return { name = member.name, type = memberType(unpack(templateParams)) }
@@ -189,7 +189,7 @@ local function resolveTemplateArgs(t, ...)
 					arg = createTemplateType(arg, nil, template.default)
 					ct.templates[i] = createTemplateType(template.name, arg, template.default)
 					ct.complete = false
-				elseif arg.baseType == "template" then
+				elseif arg.primitiveType == "template" then
 					arg = createTemplateType(template.name, arg.value, template.default)
 					ct.templates[i] = arg
 					ct.complete = false
@@ -201,10 +201,10 @@ local function resolveTemplateArgs(t, ...)
 			end
 
 			for i, v in ipairs(ct.members) do
-				if v.type.baseType == "template" then
+				if v.type.primitiveType == "template" then
 					assert(lookup[v.type.name] ~= nil, "Template argument '" .. v.type.name .. "' could not be found in the lookup")
 					ct.members[i] = { name = v.name, type = lookup[v.type.name] }
-				elseif (v.type.baseType == "class" or v.type.baseType == "array") and v.type.complete == false then
+				elseif (v.type.primitiveType == "class" or v.type.primitiveType == "array") and v.type.complete == false then
 					ct.members[i] = resolveTemplateMember(v, lookup)
 				end
 			end
@@ -212,7 +212,6 @@ local function resolveTemplateArgs(t, ...)
 			if ct.complete == true then
 				ct.name = generateTemplateClassName(ct.name, ct.templates, lookup)
 				ct.cName = generateCName(ct.name)
-				ct.base = nil -- Not important to us anymore!
 				updateTypeSize(ct)
 			end
 
@@ -367,8 +366,9 @@ initialize = function(_settings)
 
 	initialized = true
 
+	class("object") {}
 	class("array").templates("T") { }
-	stronger.array.baseType = "array"
+	stronger.array.primitiveType = "array"
 
 	--class("array").templates("ValueType", { ["Size"] = 0 }) { }	
 	--class "array<ValueType, Size = 0>" { }
