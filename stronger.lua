@@ -1,4 +1,5 @@
 local factory = require "factory.ffi"
+local parser = require "parser"
 
 local stronger = { }
 
@@ -111,7 +112,11 @@ local function generateCTypeName(name)
 	return settings.cPrefix .. name:gsub("<", "_"):gsub(",", "_"):gsub(">", ""):gsub(" ", "")
 end
 
-local function createTypeTable(name, super)
+local function createTypeTable(name, super, templates)
+	for i, v in ipairs(templates) do
+		templates[i] = createTemplateType(v)
+	end
+
 	return {  
 		name = name,
 		primitiveType = "class",
@@ -119,10 +124,10 @@ local function createTypeTable(name, super)
 		parent = super or object,
 		members = {},
 		methods = {},
-		templates = {},
+		templates = templates,
 		templateDefaults = 0,
 		size = 0,
-		resolved = true		
+		resolved = #templates == 0		
 	}
 end
 
@@ -297,21 +302,23 @@ local function class(name, super)
 		initialize()
 	end
 
-	if systemTypes[name] ~= nil then
-		error("The class name '" .. name .. "' is invalid as it is a reserved system type name")
+	local parsed = parser.parse(name)
+
+	if systemTypes[parsed.name] ~= nil then
+		error("The class name '" .. parsed.name .. "' is invalid as it is a reserved system type name")
 	end
 
-	if classTypes[name] ~= nil then
-		error("The class name '" .. name .. "' is invalid as it is already in use")
+	if classTypes[parsed.name] ~= nil then
+		error("The class name '" .. parsed.name .. "' is invalid as it is already in use")
 	end
 
-	local _type = createTypeTable(name, super)
+	local _type = createTypeTable(parsed.name, super, parsed.templates)
 	applyTypeMetatable(_type)
 
-	classTypes[name] = _type
-	stronger[name] = _type
+	classTypes[parsed.name] = _type
+	stronger[parsed.name] = _type
 	if settings.exposed == true then
-		_G[name] = _type
+		_G[parsed.name] = _type
 	end
 
 	local modifier

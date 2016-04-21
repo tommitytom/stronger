@@ -4,8 +4,6 @@ stronger.setup({ exposed = true })
 require "printr"
 require "examples.List"
 
-
-
 IntList = List(int32)
 local l = IntList.new()
 

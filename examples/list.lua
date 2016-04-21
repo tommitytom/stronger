@@ -4,7 +4,7 @@ local ffi = require "ffi"
 local INITIAL_CAPACITY = 10
 local CAPACITY_MODIFIER = 1.5
 
-class("List").templates("T") {
+class("List<T>") {
 	items = Array("T"),
 	capacity = int32,
 	length = int32
