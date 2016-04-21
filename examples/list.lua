@@ -4,10 +4,11 @@ local ffi = require "ffi"
 local INITIAL_CAPACITY = 10
 local CAPACITY_MODIFIER = 1.5
 
-class("List<T>") {
+class "List<T>" {
 	items = Array("T"),
 	capacity = int32,
-	length = int32
+	length = int32,
+	test = s.p(int32)
 }
 
 function List:init(capacity)
@@ -33,10 +34,11 @@ function List:resize(capacity)
 	print("Resizing to ", capacity)
 	local old = self.items
 	local tmp = s.templateOf(self, "T")
+	local data = tmp.newArray(capacity)
 
-	self.items = ffi.new(tmp.value.cType .. "[?]", capacity)
+	self.items = data
 	if self.capacity > 0 then
-		ffi.copy(self.items, old, tmp.value.size * self.capacity)
+		ffi.copy(self.items, old, tmp.size * self.capacity)
 	end
 
 	self.capacity = capacity

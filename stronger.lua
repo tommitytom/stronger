@@ -1,6 +1,8 @@
 local factory = require "factory.ffi"
 local parser = require "parser"
 
+local POINTER_SIZE = 4
+
 local stronger = { }
 
 local settings = {
@@ -45,22 +47,36 @@ local function createTemplateType(t, mod)
 	return template
 end
 
+local function applySystemMetatable(_type)
+	setmetatable(_type, {
+		__call = function(t, default)
+			local ct = cloneTable(t)
+			ct.default = default
+			return ct
+		end,
+		__index = {
+			newArray = function(size)
+				if _type.resolved == true then
+					return factory.createArray(_type, size)
+				end
+
+				error("Unable to instantiate array of class type '" .. _type.name .. "' as it is unresolved");
+			end
+		}
+	})
+end
+
 local function createSystemType(name, size, cType)
 	local _type = {
 		primitiveType = "system",
 		name = name,
 		size = size,
 		cType = cType,
+		pointer = 0,
 		resolved = true
 	}
 
-	setmetatable(_type, {
-		__call = function(t, default)
-			local ct = cloneTable(t)
-			ct.default = default
-			return ct
-		end
-	})
+	applySystemMetatable(_type)
 
 	systemTypes[name] = _type
 	stronger[name] = _type
@@ -104,7 +120,11 @@ local function updateTypeSize(t)
 	t.size = 0
 	for _, v in ipairs(t.members) do
 		assert(v.type.resolved == true)
-		t.size = t.size + v.type.size
+		if v.type.pointer == 0 then
+			t.size = t.size + v.type.size
+		else
+			t.size = t.size + POINTER_SIZE
+		end
 	end
 end
 
@@ -127,7 +147,8 @@ local function createTypeTable(name, super, templates)
 		templates = templates,
 		templateDefaults = 0,
 		size = 0,
-		resolved = #templates == 0		
+		resolved = #templates == 0,
+		pointer = 0	
 	}
 end
 
@@ -267,11 +288,11 @@ local function resolveTemplateArgs(t, ...)
 	end
 end
 
-local function applyTypeMetatable(_type)
+local function applyClassMetatable(_type)
 	setmetatable(_type, {
 		__call = function(t, ...) 
 			local ct = resolveTemplateArgs(t, ...)
-			applyTypeMetatable(ct)
+			applyClassMetatable(ct)
 			return ct
 		end,
 		__index = {
@@ -281,6 +302,13 @@ local function applyTypeMetatable(_type)
 				end
 
 				error("Unable to instantiate class type '" .. _type.name .. "' as it is unresolved");
+			end,
+			newArray = function(size)
+				if _type.resolved == true then
+					return factory.createArray(_type, size)
+				end
+
+				error("Unable to instantiate array of class type '" .. _type.name .. "' as it is unresolved");
 			end,
 		},
 		__newindex = function(t, k, v)
@@ -313,7 +341,7 @@ local function class(name, super)
 	end
 
 	local _type = createTypeTable(parsed.name, super, parsed.templates)
-	applyTypeMetatable(_type)
+	applyClassMetatable(_type)
 
 	classTypes[parsed.name] = _type
 	stronger[parsed.name] = _type
@@ -439,12 +467,29 @@ end
 
 local function templateOf(obj, name)
 	local t = typeOf(obj)
-	return findTemplate(t, name)
+	return findTemplate(t, name).value
+end
+
+local function p(_type, level)
+	local t = cloneTable(_type)
+	t.pointer = level or 1
+	t.origin = _type.origin or _type
+
+	if _type.primitiveType == "class" then
+		applyClassMetatable(t)
+		t.size = POINTER_SIZE
+	elseif _type.primitiveType == "system" then
+		applySystemMetatable(t)
+		t.size = POINTER_SIZE
+	end
+	
+	return t
 end
 
 stronger.setup = initialize
 stronger.class = class
 stronger.typeOf = typeOf
 stronger.templateOf = templateOf
+stronger.p = p
 
 return stronger

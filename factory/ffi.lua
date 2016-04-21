@@ -82,6 +82,17 @@ local function create(_type, ...)
 	return obj
 end
 
+local function createArray(_type, size)
+	if _type.primitiveType == "class" then
+		local ctype = ctypes[_type.name]
+		if ctype == nil then
+			addCType(_type)
+		end
+	end
+
+	return ffi.new(_type.cType .. "[?]", size)
+end
+
 local function registerSystemType(_type)
 	if _type.cType ~= nil then
 		ffi.cdef("typedef " .. _type.cType .. " " .. _type.name .. ";")
@@ -96,7 +107,8 @@ local function typeOf(obj)
 end
 
 return { 
-	create = create, 
+	create = create,
+	createArray = createArray,
 	registerSystemType = registerSystemType, 
 	typeOf = typeOf 
 }
