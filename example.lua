@@ -1,37 +1,18 @@
 local stronger = require "stronger"
-require "printr"
-
 stronger.setup({ exposed = true })
 
-class("BaseBase").templates("BaseBaseValueType") {
-	basebaseval = "BaseBaseValueType"
-}
+require "printr"
+require "examples.List"
 
-class "NonTemp" {
-	val = int32
-}
 
-class("In").inherits(NonTemp) {
-	
-}
 
-class("Base").templates("BaseValueType") {
-	baseval = BaseBase("BaseValueType")
-}
+IntList = List(int32)
+local l = IntList.new()
 
-class("Nest").templates("NestValueType") {
-	nestval = Base("NestValueType")
-}
+for i = 1, 30 do
+	l:add(i)
+end
 
---class("Array<typename T, int32 Size = 0>")
-
---print_r(Nest(int32))
---print_r(array(int32))
-In.new()
-Nest(int32).new()
-
---[[class("Nest").templates("NestValueType") {
-	nestval = Base("NestValueType")
-}
-
-Nest(int32).new()]]
+for i = 1, 30 do
+	print(l.items[i - 1])
+end
