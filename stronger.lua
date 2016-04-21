@@ -22,22 +22,35 @@ local function cloneTable(t)
 	return ct
 end
 
-local function createTemplateType(name, value, default)
-	return {
-		name = name,
-		value = value,
-		default = default,
-		primitiveType = "template"
+local function createTemplateType(t, mod)
+	mod = mod or {}
+	local template = {
+		primitiveType = "template",
+		name = mod.name or t.name,
+		templateType = mod.templateType or t.templateType,
+		value = mod.value or t.value,
+		default = mod.default or t.default,
+		type = mod.type or t.type
 	}
+
+	if template.templateType == nil then
+		if template.type ~= nil then
+			template.templateType = "value"
+		else
+			template.templateType = "type"
+		end
+	end
+
+	return template
 end
 
-local function createSystemType(name, size, ctype)
+local function createSystemType(name, size, cType)
 	local _type = {
+		primitiveType = "system",
 		name = name,
 		size = size,
-		ctype = ctype,
-		primitiveType = "system",
-		complete = true
+		cType = cType,
+		resolved = true
 	}
 
 	setmetatable(_type, {
@@ -62,8 +75,8 @@ local function validateParent(p)
 		error("Parent class undefined") 
 	end
 
-	if p.complete == false then
-		error("Unable to inherit from an incomplete class type")
+	if p.resolved == false then
+		error("Unable to inherit from an unresolved class type")
 	end
 end
 
@@ -89,27 +102,27 @@ end
 local function updateTypeSize(t)
 	t.size = 0
 	for _, v in ipairs(t.members) do
-		assert(v.type.complete == true)
+		assert(v.type.resolved == true)
 		t.size = t.size + v.type.size
 	end
 end
 
-local function generateCName(name)
+local function generateCTypeName(name)
 	return settings.cPrefix .. name:gsub("<", "_"):gsub(",", "_"):gsub(">", ""):gsub(" ", "")
 end
 
 local function createTypeTable(name, super)
 	return {  
 		name = name,
-		cName = generateCName(name),
+		primitiveType = "class",
+		cType = generateCTypeName(name),
 		parent = super or object,
 		members = {},
 		methods = {},
 		templates = {},
 		templateDefaults = 0,
-		complete = true,
 		size = 0,
-		primitiveType = "class"
+		resolved = true		
 	}
 end
 
@@ -125,6 +138,7 @@ local function cloneType(t)
 	end
 
 	ct.origin = t.origin or t
+	ct.cType = ""
 
 	return ct
 end
@@ -168,51 +182,72 @@ end
 local function generateTemplateClassName(name, templates, lookup)
 	name = name .. "<"
 	for i, v in ipairs(templates) do
-		name = name .. (i > 1 and ", " or "") .. lookup[v.name].name
+		local item = lookup[v.name]
+		local tname = item
+		if type(item) == "table" then
+			tname = item.name
+		end
+
+		name = name .. (i > 1 and ", " or "") .. tname
 	end
 
 	return name .. ">"
 end
 
+local function setTemplateValue(template, value)
+	local resolved = true
+	if type(value) == "string" then
+		value = createTemplateType({ name = value })
+		template = createTemplateType(template, { value = value })
+		resolved = false
+	elseif type(value) == "table" then
+		if value.primitiveType == "template" then
+			template = createTemplateType(template, { value = value })
+			resolved = false
+		else
+			template = createTemplateType(template, { value = value })
+		end
+	else
+		template = createTemplateType(template, { value = value })
+	end
+
+	return template, resolved
+end
+
 local function resolveTemplateArgs(t, ...)
-	if t.complete == false then
+	if t.resolved == false then
 		local args = {...}
 		if #args >= (#t.templates - t.templateDefaults) and #args <= #t.templates then
 			local templateArgs = bundleTemplateArgs(args, t.templates)
 			local ct = cloneType(t)
-			ct.complete = true
+			ct.resolved = true
 
 			local lookup = {}
 			for i, arg in ipairs(templateArgs) do
-				local template = ct.templates[i]
-				if type(arg) == "string" then
-					arg = createTemplateType(arg, nil, template.default)
-					ct.templates[i] = createTemplateType(template.name, arg, template.default)
-					ct.complete = false
-				elseif arg.primitiveType == "template" then
-					arg = createTemplateType(template.name, arg.value, template.default)
-					ct.templates[i] = arg
-					ct.complete = false
-				else
-					ct.templates[i] = createTemplateType(template.name, arg, template.default)
-				end
+				local template, resolved = setTemplateValue(ct.templates[i], arg)
+				ct.templates[i] = template
+				lookup[template.name] = template.value
 
-				lookup[template.name] = arg
+				if resolved == false then
+					ct.resolved = false
+				end
 			end
 
 			for i, v in ipairs(ct.members) do
 				if v.type.primitiveType == "template" then
 					assert(lookup[v.type.name] ~= nil, "Template argument '" .. v.type.name .. "' could not be found in the lookup")
 					ct.members[i] = { name = v.name, type = lookup[v.type.name] }
-				elseif (v.type.primitiveType == "class" or v.type.primitiveType == "array") and v.type.complete == false then
+				elseif (v.type.primitiveType == "class" or v.type.primitiveType == "array") and v.type.resolved == false then
 					ct.members[i] = resolveTemplateMember(v, lookup)
 				end
 			end
 
-			if ct.complete == true then
+			if ct.resolved == true then
 				ct.name = generateTemplateClassName(ct.name, ct.templates, lookup)
-				ct.cName = generateCName(ct.name)
+				ct.cType = generateCTypeName(ct.name)
 				updateTypeSize(ct)
+			else
+				ct.cType = nil
 			end
 
 			return ct
@@ -233,11 +268,11 @@ local function applyTypeMetatable(_type)
 		end,
 		__index = {
 			new = function(...)
-				if _type.complete == true then
+				if _type.resolved == true then
 					return factory.create(_type, ...)
 				end
 
-				error("Unable to instantiate class type '" .. _type.name .. "' as it is incomplete");
+				error("Unable to instantiate class type '" .. _type.name .. "' as it is unresolved");
 			end,
 		},
 		__newindex = function(t, k, v)
@@ -291,8 +326,10 @@ local function class(name, super)
 				end
 			end
 
-			if _type.complete == true then
+			if _type.resolved == true then
 				updateTypeSize(_type)
+			else
+				_type.cType = nil
 			end
 		end,
 		__index = {
@@ -308,16 +345,18 @@ local function class(name, super)
 
 					local template
 					if type(v) == "string" then
-						template = createTemplateType(v)
+						template = createTemplateType({ name = v })
 					else
-						template = createTemplateType(v[1], nil, v[2])
-						_type.templateDefaults = _type.templateDefaults + 1
+						template = createTemplateType(v)
+						if template.default ~= nil then
+							_type.templateDefaults = _type.templateDefaults + 1
+						end
 					end
 
 					table.insert(_type.templates, template)
 				end
 
-				_type.complete = false
+				_type.resolved = false
 				return modifier
 			end
 		}
@@ -367,7 +406,7 @@ initialize = function(_settings)
 	initialized = true
 
 	class("object") {}
-	class("array").templates("T") { }
+	class("array").templates("T", { name = "Size", type = uint32, default = 0 }) { }
 	stronger.array.primitiveType = "array"
 
 	--class("array").templates("ValueType", { ["Size"] = 0 }) { }	

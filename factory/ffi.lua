@@ -1,27 +1,7 @@
 local ffi = require "ffi"
+local writer = require "writer.c"
 
 local ctypes = {}
-
-local function memberString(_type)
-	assert(_type.complete == true)
-
-	local def = ""
-	if _type.parent ~= nil then
-		def = def .. memberString(_type.parent)
-	end
-
-	for i, v in ipairs(_type.members) do
-		local memberType = v.type.cName or v.type.name
-		if v.type.primitiveType == "array" then
-			local arrayType = v.type.templates[1].value
-			memberType = (arrayType.cName or arrayType.name) .. "*"
-		end
-
-		def = def .. "\t" .. memberType .. " " .. v.name .. ";\n"
-	end
-
-	return def
-end
 
 local function callDestructors(_type, instance)
 	local destroy = _type.methods["destroy"];
@@ -47,7 +27,7 @@ local function buildMethodTable(t, mt)
 end
 
 local function addCType(_type)
-	assert(_type.complete == true, _type.name .. " is incomplete")
+	assert(_type.resolved == true, _type.name .. " is unresolved")
 
 	-- Make sure all parents and member types have been added to the ffi
 	if _type.parent ~= nil then
@@ -62,22 +42,18 @@ local function addCType(_type)
 		end
 	end
 
-	-- Write out the struct definition
-	local def = "typedef struct {\n"
-	def = def .. memberString(_type)
-	def = def .. "} " .. _type.cName .. ";"
+	local def = writer.write(_type, "pretty")
 
 	print("-----------------")
 	print(def)
 	ffi.cdef(def);
-	--print_r(_type)
 
 	local methods = _type.methods
 	if _type.parent ~= nil then
 		methods = buildMethodTable(_type, {})
 	end
 
-	local ctype = ffi.metatype(_type.cName, { 
+	local ctype = ffi.metatype(_type.cType, { 
 		__index = methods,
 		__gc = function(instance)
 			callDestructors(_type, instance)
@@ -105,9 +81,9 @@ local function create(_type, ...)
 end
 
 local function registerSystemType(_type)
-	if _type.ctype ~= nil then
-		ffi.cdef("typedef " .. _type.ctype .. " " .. _type.name .. ";")
-		assert(_type.size == ffi.sizeof(_type.ctype), "Size mismatch for " .. _type.name .. ": Def - " .. _type.size .. "   C - " .. ffi.sizeof(_type.name))
+	if _type.cType ~= nil then
+		ffi.cdef("typedef " .. _type.cType .. " " .. _type.name .. ";")
+		assert(_type.size == ffi.sizeof(_type.cType), "Size mismatch for " .. _type.name .. ": Def - " .. _type.size .. "   C - " .. ffi.sizeof(_type.name))
 	end
 end
 

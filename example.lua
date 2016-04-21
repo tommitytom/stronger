@@ -26,10 +26,9 @@ class("Nest").templates("NestValueType") {
 --class("Array<typename T, int32 Size = 0>")
 
 --print_r(Nest(int32))
-print_r(In)
-print(In.parent)
+--print_r(array(int32))
 In.new()
---Nest(int32).new()
+Nest(int32).new()
 
 --[[class("Nest").templates("NestValueType") {
 	nestval = Base("NestValueType")
