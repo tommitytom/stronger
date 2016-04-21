@@ -89,7 +89,7 @@ local function validateTemplateArg(arg)
 	elseif type(arg) == "string" then
 		-- TODO: Make sure this isn't a reserved word
 	elseif type(arg) == "number" then
-		error("Number parameters are not supported yet")
+		-- Do some checking here
 	elseif type(arg) == "table" then
 		if arg.primitiveType == nil then
 			error("Template argument must be a valid type")
@@ -195,6 +195,7 @@ local function generateTemplateClassName(name, templates, lookup)
 end
 
 local function setTemplateValue(template, value)
+	-- This function can probably be tidied up a bit
 	local resolved = true
 	if type(value) == "string" then
 		value = createTemplateType({ name = value })
@@ -205,9 +206,11 @@ local function setTemplateValue(template, value)
 			template = createTemplateType(template, { value = value })
 			resolved = false
 		else
+			-- Check if this codepath is called
 			template = createTemplateType(template, { value = value })
 		end
 	else
+		-- Check if this codepath is called
 		template = createTemplateType(template, { value = value })
 	end
 
@@ -375,6 +378,10 @@ initialize = function(_settings)
 		settings.exposed = true
 	end
 
+	if _settings.cPrefix ~= nil then
+		settings.cPrefix = _settings.cPrefix
+	end
+
 	createSystemType("bool", 4)
 	createSystemType("float", 4)
 	createSystemType("double", 4)
@@ -406,14 +413,31 @@ initialize = function(_settings)
 	initialized = true
 
 	class("object") {}
-	class("array").templates("T", { name = "Size", type = uint32, default = 0 }) { }
-	stronger.array.primitiveType = "array"
+	class("Array").templates("T") { }
+	class("StaticArray").templates("T", { name = "Size", type = uint32 }) { }
+	stronger.Array.primitiveType = "array"
+	stronger.StaticArray.primitiveType = "array"
 
 	--class("array").templates("ValueType", { ["Size"] = 0 }) { }	
 	--class "array<ValueType, Size = 0>" { }
 end
 
+local function typeOf(obj)
+	if type(obj) == "cdata" then
+		return factory.typeOf(obj)
+	end
+
+	assert(false)
+end
+
+local function templateOf(obj, name)
+	local t = typeOf(obj)
+	return findTemplate(t, name)
+end
+
 stronger.setup = initialize
 stronger.class = class
+stronger.typeOf = typeOf
+stronger.templateOf = templateOf
 
 return stronger

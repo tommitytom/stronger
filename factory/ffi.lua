@@ -2,6 +2,7 @@ local ffi = require "ffi"
 local writer = require "writer.c"
 
 local ctypes = {}
+local typeLookup = {}
 
 local function callDestructors(_type, instance)
 	local destroy = _type.methods["destroy"];
@@ -62,6 +63,7 @@ local function addCType(_type)
 
 	--assert(_type.size == ffi.sizeof(ctype), "Differing type sizes for " .. _type.name .. ": " .. _type.size .. ", " .. ffi.sizeof(ctype))
 	ctypes[_type.name] = ctype
+	typeLookup[tonumber(ctype)] = _type
 
 	return ctype
 end
@@ -87,4 +89,14 @@ local function registerSystemType(_type)
 	end
 end
 
-return { create = create, registerSystemType = registerSystemType }
+local function typeOf(obj)
+	local id = tonumber(ffi.typeof(obj))
+	assert(typeLookup[id] ~= nil)
+	return typeLookup[id]
+end
+
+return { 
+	create = create, 
+	registerSystemType = registerSystemType, 
+	typeOf = typeOf 
+}
