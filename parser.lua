@@ -5,6 +5,7 @@ local tokenTypes = {
 	[","] = { name = "COMMA" },
 	["("] = { name = "BRACKET_LEFT" },
 	[")"] = { name = "BRACKET_RIGHT" },
+	["*"] = { name = "ASTERISK" },
 	[" "] = false
 }
 
@@ -74,7 +75,8 @@ end
 local function parseTemplates(it)
 	local templates = {}
 	while it:next().name ~= "GREATER_THAN" and it:value().name ~= "END" do
-		local template = {}
+		local template = { pointer = 0 }
+
 		if it:value().name == "NAME" then
 			template.name = it:value().value
 			if it:next().name ~= "COMMA" and it:value().name ~= "GREATER_THAN" then
@@ -91,7 +93,14 @@ local function parseTemplates(it)
 					else
 						logParserError(token:value())
 					end
-				elseif it:value().name ~= "GREATER_THAN" and it:value().name ~= "COMMA" then
+				end
+
+				while it:value().name == "ASTERISK" do
+					template.pointer = template.pointer + 1
+					it:next()
+				end
+
+				if it:value().name ~= "GREATER_THAN" and it:value().name ~= "COMMA" then
 					logParserError(it:value())
 				end
 			end
@@ -109,10 +118,17 @@ local function parseRoot(it)
 	local _type = { templates = {} }
 	if it:value().name == "NAME" then
 		_type.name = it:value().value
+		it:next()
 
-		if it:next().name ~= "END" then
+		while it:value().name ~= "END" do
 			if it:value().name == "LESS_THAN" then
 				_type.templates = parseTemplates(it)
+			elseif it:value().name == "ASTERISK" then
+				_type.pointer = 0
+				while it:value().name == "ASTERISK" do
+					_type.pointer = _type.pointer + 1
+					it:next()
+				end
 			else 
 				logParserError(it:value())
 			end

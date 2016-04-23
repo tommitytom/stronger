@@ -1,5 +1,7 @@
-local factory = require "factory.ffi"
+local ObjectFactory = require "factory.ffi"
 local parser = require "parser"
+local TypeFactory = require "type"
+local Util = require "util"
 
 local POINTER_SIZE = 4
 
@@ -16,75 +18,24 @@ local classTypes = {}
 local templateParamTypes = {}
 local intialize
 
-local function cloneTable(t)
-	local ct = {}
-	for k, v in pairs(t) do
-		ct[k] = v
-	end
-
-	return ct
-end
-
-local function createTemplateType(t, mod)
-	mod = mod or {}
-	local template = {
-		primitiveType = "template",
-		name = mod.name or t.name,
-		templateType = mod.templateType or t.templateType,
-		value = mod.value or t.value,
-		default = mod.default or t.default,
-		type = mod.type or t.type
-	}
-
-	if template.templateType == nil then
-		if template.type ~= nil then
-			template.templateType = "value"
-		else
-			template.templateType = "type"
+local function findTemplate(_type, name)
+	for i, v in ipairs(_type.templates) do
+		if v.name == name then
+			return v
 		end
 	end
-
-	return template
 end
 
-local function applySystemMetatable(_type)
-	setmetatable(_type, {
-		__call = function(t, default)
-			local ct = cloneTable(t)
-			ct.default = default
-			return ct
-		end,
-		__index = {
-			newArray = function(size)
-				if _type.resolved == true then
-					return factory.createArray(_type, size)
-				end
-
-				error("Unable to instantiate array of class type '" .. _type.name .. "' as it is unresolved");
-			end
-		}
-	})
-end
-
-local function createSystemType(name, size, cType)
-	local _type = {
-		primitiveType = "system",
-		name = name,
-		size = size,
-		cType = cType,
-		pointer = 0,
-		resolved = true
-	}
-
-	applySystemMetatable(_type)
-
-	systemTypes[name] = _type
-	stronger[name] = _type
-	if settings.exposed == true then
-		_G[name] = _type
+local function getType(name)
+	local t = classTypes[name]
+	if t ~= nil then
+		return t
 	end
 
-	factory.registerSystemType(_type)
+	t = systemTypes[name]
+	if t ~= nil then
+		return t
+	end
 end
 
 local function validateParent(p)
@@ -119,7 +70,7 @@ end
 local function updateTypeSize(t)
 	t.size = 0
 	for _, v in ipairs(t.members) do
-		assert(v.type.resolved == true)
+		assert(v.type.resolved == nil or v.type.resolved == true)
 		if v.type.pointer == 0 then
 			t.size = t.size + v.type.size
 		else
@@ -132,34 +83,14 @@ local function generateCTypeName(name)
 	return settings.cPrefix .. name:gsub("<", "_"):gsub(",", "_"):gsub(">", ""):gsub(" ", "")
 end
 
-local function createTypeTable(name, super, templates)
-	for i, v in ipairs(templates) do
-		templates[i] = createTemplateType(v)
-	end
-
-	return {  
-		name = name,
-		primitiveType = "class",
-		cType = generateCTypeName(name),
-		parent = super or object,
-		members = {},
-		methods = {},
-		templates = templates,
-		templateDefaults = 0,
-		size = 0,
-		resolved = #templates == 0,
-		pointer = 0	
-	}
-end
-
 local function cloneType(t)
-	local ct = cloneTable(t)
-	ct.members = cloneTable(t.members)
-	ct.templates = cloneTable(t.templates)
+	local ct = Util.shallowCloneTable(t)
+	ct.members = Util.shallowCloneTable(t.members)
+	ct.templates = Util.shallowCloneTable(t.templates)
 
 	for i, v in ipairs(ct.members) do
 		if v.type.primitiveType == "template" then
-			ct.members[i] = cloneTable(v)
+			ct.members[i] = Util.shallowCloneTable(v)
 		end
 	end
 
@@ -224,20 +155,20 @@ local function setTemplateValue(template, value)
 	-- This function can probably be tidied up a bit
 	local resolved = true
 	if type(value) == "string" then
-		value = createTemplateType({ name = value })
-		template = createTemplateType(template, { value = value })
+		value = TypeFactory.TemplateType({ name = value })
+		template = TypeFactory.TemplateType(template, { value = value })
 		resolved = false
 	elseif type(value) == "table" then
 		if value.primitiveType == "template" then
-			template = createTemplateType(template, { value = value })
+			template = TypeFactory.TemplateType(template, { value = value })
 			resolved = false
 		else
 			-- Check if this codepath is called
-			template = createTemplateType(template, { value = value })
+			template = TypeFactory.TemplateType(template, { value = value })
 		end
 	else
 		-- Check if this codepath is called
-		template = createTemplateType(template, { value = value })
+		template = TypeFactory.TemplateType(template, { value = value })
 	end
 
 	return template, resolved
@@ -288,6 +219,21 @@ local function resolveTemplateArgs(t, ...)
 	end
 end
 
+local function applySystemMetatable(_type)
+	setmetatable(_type, {
+		__call = function(t, default)
+			local ct = Util.shallowCloneTable(t)
+			ct.default = default
+			return ct
+		end,
+		__index = {
+			newArray = function(size)
+				return ObjectFactory.createArray(_type, size)
+			end
+		}
+	})
+end
+
 local function applyClassMetatable(_type)
 	setmetatable(_type, {
 		__call = function(t, ...) 
@@ -298,14 +244,14 @@ local function applyClassMetatable(_type)
 		__index = {
 			new = function(...)
 				if _type.resolved == true then
-					return factory.create(_type, ...)
+					return ObjectFactory.create(_type, ...)
 				end
 
 				error("Unable to instantiate class type '" .. _type.name .. "' as it is unresolved");
 			end,
 			newArray = function(size)
 				if _type.resolved == true then
-					return factory.createArray(_type, size)
+					return ObjectFactory.createArray(_type, size)
 				end
 
 				error("Unable to instantiate array of class type '" .. _type.name .. "' as it is unresolved");
@@ -317,12 +263,18 @@ local function applyClassMetatable(_type)
 	})
 end
 
-local function findTemplate(_type, name)
-	for i, v in ipairs(_type.templates) do
-		if v.name == name then
-			return v
-		end
+local function addSystemType(name, size, cType)
+	local _type = TypeFactory.SystemType(name, size, cType)
+	applySystemMetatable(_type)
+
+	systemTypes[name] = _type
+	stronger[name] = _type
+
+	if settings.exposed == true then
+		_G[name] = _type
 	end
+
+	ObjectFactory.registerSystemType(_type)
 end
 
 local function class(name, super)
@@ -340,7 +292,13 @@ local function class(name, super)
 		error("The class name '" .. parsed.name .. "' is invalid as it is already in use")
 	end
 
-	local _type = createTypeTable(parsed.name, super, parsed.templates)
+	local _type = TypeFactory.ClassType({
+		name = parsed.name,
+		cType = generateCTypeName(parsed.name),
+		super = super,
+		tempaltes = parsed.templates
+	})
+
 	applyClassMetatable(_type)
 
 	classTypes[parsed.name] = _type
@@ -356,11 +314,25 @@ local function class(name, super)
 
 			for k, v in pairs(members) do
 				if type(v) == "string" then
-					local template = findTemplate(_type, v)
-					assert(template ~= nil)
-					table.insert(_type.members, { name = k, type = template })
-				else 
-					table.insert(_type.members, { name = k, type = v })
+					local parsed = parser.parse(v)
+					local t = getType(parsed.name)
+					if t == nil then
+						t = findTemplate(_type, parsed.name)
+						assert(t ~= nil)
+					end
+
+					if parsed.pointer ~= nil then
+						t = TypeFactory.PointerType(t, parsed.pointer)
+					end
+
+					table.insert(_type.members, { name = k, type = t })
+				elseif type(v) == "table" then
+					if v.primitiveType == "pointer" then
+						assert(false)
+						--if v.
+					else
+						table.insert(_type.members, { name = k, type = v })
+					end
 				end
 			end
 
@@ -383,9 +355,9 @@ local function class(name, super)
 
 					local template
 					if type(v) == "string" then
-						template = createTemplateType({ name = v })
+						template = TypeFactory.TemplateType({ name = v })
 					else
-						template = createTemplateType(v)
+						template = TypeFactory.TemplateType(v)
 						if template.default ~= nil then
 							_type.templateDefaults = _type.templateDefaults + 1
 						end
@@ -417,29 +389,29 @@ initialize = function(_settings)
 		settings.cPrefix = _settings.cPrefix
 	end
 
-	createSystemType("bool", 4)
-	createSystemType("float", 4)
-	createSystemType("double", 4)
-	createSystemType("int8", 1, "signed char")
-	createSystemType("uint8", 1, "unsigned char")
-	createSystemType("int16", 2, "signed short")
-	createSystemType("uint16", 2, "unsigned short")
-	createSystemType("int32", 4, "signed int")
-	createSystemType("uint32", 4, "unsigned int")
-	createSystemType("int64", 8, "signed long long")
-	createSystemType("uint64", 8, "unsigned long long")
+	addSystemType("bool", 4)
+	addSystemType("float", 4)
+	addSystemType("double", 4)
+	addSystemType("int8", 1, "signed char")
+	addSystemType("uint8", 1, "unsigned char")
+	addSystemType("int16", 2, "signed short")
+	addSystemType("uint16", 2, "unsigned short")
+	addSystemType("int32", 4, "signed int")
+	addSystemType("uint32", 4, "unsigned int")
+	addSystemType("int64", 8, "signed long long")
+	addSystemType("uint64", 8, "unsigned long long")
 
 	if _settings.extraShortSystemTypes == true then
-		createSystemType("i8", 1, "signed char")
-		createSystemType("u8", 1, "unsigned char")
-		createSystemType("i16", 2, "signed short")
-		createSystemType("u16", 2, "unsigned short")
-		createSystemType("i32", 4, "signed int")
-		createSystemType("u32", 4, "unsigned int")
-		createSystemType("i64", 8, "signed long long")
-		createSystemType("u64", 8, "unsigned long long")
-		createSystemType("f32", 4, "float")
-		createSystemType("f64", 8, "double")
+		addSystemType("i8", 1, "signed char")
+		addSystemType("u8", 1, "unsigned char")
+		addSystemType("i16", 2, "signed short")
+		addSystemType("u16", 2, "unsigned short")
+		addSystemType("i32", 4, "signed int")
+		addSystemType("u32", 4, "unsigned int")
+		addSystemType("i64", 8, "signed long long")
+		addSystemType("u64", 8, "unsigned long long")
+		addSystemType("f32", 4, "float")
+		addSystemType("f64", 8, "double")
 		settings.extraShortSystemTypes = true
 	else
 		settings.extraShortSystemTypes = false
@@ -447,11 +419,11 @@ initialize = function(_settings)
 
 	initialized = true
 
-	class("object") {}
-	class("Array").templates("T") { }
-	class("StaticArray").templates("T", { name = "Size", type = uint32 }) { }
-	stronger.Array.primitiveType = "array"
-	stronger.StaticArray.primitiveType = "array"
+	--class("object") {}
+	--class("array").templates("T") { }
+	--class("StaticArray").templates("T", { name = "Size", type = uint32 }) { }
+	--stronger.array.primitiveType = "array"
+	--stronger.StaticArray.primitiveType = "array"
 
 	--class("array").templates("ValueType", { ["Size"] = 0 }) { }	
 	--class "array<ValueType, Size = 0>" { }
@@ -459,7 +431,7 @@ end
 
 local function typeOf(obj)
 	if type(obj) == "cdata" then
-		return factory.typeOf(obj)
+		return ObjectFactory.typeOf(obj)
 	end
 
 	assert(false)
@@ -470,20 +442,23 @@ local function templateOf(obj, name)
 	return findTemplate(t, name).value
 end
 
-local function p(_type, level)
-	local t = cloneTable(_type)
-	t.pointer = level or 1
-	t.origin = _type.origin or _type
 
-	if _type.primitiveType == "class" then
-		applyClassMetatable(t)
-		t.size = POINTER_SIZE
-	elseif _type.primitiveType == "system" then
-		applySystemMetatable(t)
-		t.size = POINTER_SIZE
+
+local function p(_type, level)
+	local t = _type
+	if type(_type) == "string" then
+		local parsed = parser.parse(_type)
+		t = getType(parsed.name)
+		if t == nil then
+			t = parsed.name
+		end
+
+		if parsed.pointer ~= nil then
+			level = (level or 1) + parsed.pointer
+		end
 	end
-	
-	return t
+
+	return TypeFactory.PointerType(t, level)
 end
 
 stronger.setup = initialize

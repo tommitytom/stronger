@@ -1,5 +1,22 @@
 local s = require "stronger"
 
+describe("name parser", function()
+	local parser = require "parser"
+
+	it("basic parsing", function()
+		local t = parser.parse("List")
+		assert.is_true(t.name, "List")
+		assert.is_true(t.pointer == 0)
+		assert.is_true(#t.templates == 0)
+
+		t = parser.parse("List*")
+		assert.is_true(t.pointer == 1)
+
+		t = parser.parse("List**")
+		assert.is_true(t.pointer == 2)
+	end)
+end)
+
 describe("class creation", function()
 	it("tests simple class creation", function()
 		s.class "Foo" {

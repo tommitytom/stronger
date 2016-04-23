@@ -1,14 +1,12 @@
 local s = require "stronger"
-local ffi = require "ffi"
+require "containers.Array"
 
 local INITIAL_CAPACITY = 10
 local CAPACITY_MODIFIER = 1.5
 
 class "List<T>" {
 	items = Array("T"),
-	capacity = int32,
-	length = int32,
-	test = s.p(int32)
+	length = int32
 }
 
 function List:init(capacity)
@@ -20,26 +18,16 @@ function List:init(capacity)
 end
 
 function List:add(item)
-	if self.length == self.capacity then
-		local capacity = math.ceil(self.capacity * CAPACITY_MODIFIER)
-		capacity = capacity > 0 and capacity or INITIAL_CAPACITY
-		self:resize(capacity)
+	if self.length == self.items.capacity then
+		local capacity = math.ceil(self.items.capacity * CAPACITY_MODIFIER)
+		self.items:resize(capacity > 0 and capacity or INITIAL_CAPACITY)
 	end
 
-	self.items[self.length] = item
+	self.items.set(self.length, item)
 	self.length = self.length + 1
 end
 
 function List:resize(capacity)
-	print("Resizing to ", capacity)
-	local old = self.items
-	local tmp = s.templateOf(self, "T")
-	local data = tmp.newArray(capacity)
-
-	self.items = data
-	if self.capacity > 0 then
-		ffi.copy(self.items, old, tmp.size * self.capacity)
-	end
-
+	self.items:resize(capacity)
 	self.capacity = capacity
 end

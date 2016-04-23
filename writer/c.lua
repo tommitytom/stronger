@@ -15,11 +15,6 @@ local function memberString(_type, ch)
 			memberType = (arrayType.cType or arrayType.name) .. "*"
 		end
 
-		print(v.type.name, v.type.pointer, v.type.origin)
-		for i = 1, v.type.pointer do
-			memberType = memberType .. "*"
-		end
-
 		def = def .. ch.tab .. memberType .. " " .. v.name .. ";" .. ch.line
 	end
 
