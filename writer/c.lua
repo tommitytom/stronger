@@ -10,10 +10,9 @@ local function memberString(_type, ch)
 		local memberType = v.type.cType
 		if v.type.primitiveType == "system" then
 			memberType = v.type.name
-		elseif v.type.primitiveType == "array" then
-			local arrayType = v.type.templates[1].value
-			memberType = (arrayType.cType or arrayType.name) .. "*"
 		end
+
+		print_r(v.type)
 
 		def = def .. ch.tab .. memberType .. " " .. v.name .. ";" .. ch.line
 	end

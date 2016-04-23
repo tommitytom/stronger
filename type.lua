@@ -5,7 +5,8 @@ local function createSystemType(name, size, cType)
 		primitiveType = "system",
 		name = name,
 		size = size,
-		cType = cType
+		cType = cType or name,
+		resolved = true
 	}
 end
 
@@ -19,6 +20,8 @@ local function createTemplateType(t, mod)
 		default = mod.default or t.default,
 		type = mod.type or t.type
 	}
+
+	template.resolved = template.value ~= nil
 
 	if template.templateType == nil then
 		if template.type ~= nil then
@@ -53,11 +56,14 @@ local function createClassType(data)
 end
 
 local function createPointerType(origin, indirection)
+	local resolved = true
 	local name = origin
 	local cType
+
 	if type(origin) == "table" then
 		name = origin.name
 		cType = origin.cType
+		resolved = origin.resolved
 	end
 	
 	indirection = indirection or 1
@@ -74,7 +80,8 @@ local function createPointerType(origin, indirection)
 		cType = cType,
 		origin = origin,
 		indirection = indirection,
-		size = POINTER_SIZE
+		size = POINTER_SIZE,
+		resolved = resolved
 	}
 end
 

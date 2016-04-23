@@ -8,7 +8,7 @@ local v = stronger.p("T")
 print_r(v)
 
 class("Test").templates("T") {
-	val = "int32*"
+	val = "T*"
 }
 
 print_r(Test(float))

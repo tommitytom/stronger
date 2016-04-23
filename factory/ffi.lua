@@ -94,7 +94,7 @@ local function createArray(_type, size)
 end
 
 local function registerSystemType(_type)
-	if _type.cType ~= nil then
+	if _type.cType ~= _type.name then
 		ffi.cdef("typedef " .. _type.cType .. " " .. _type.name .. ";")
 		assert(_type.size == ffi.sizeof(_type.cType), "Size mismatch for " .. _type.name .. ": Def - " .. _type.size .. "   C - " .. ffi.sizeof(_type.name))
 	end

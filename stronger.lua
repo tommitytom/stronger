@@ -159,6 +159,7 @@ local function setTemplateValue(template, value)
 		template = TypeFactory.TemplateType(template, { value = value })
 		resolved = false
 	elseif type(value) == "table" then
+		assert(value.primitiveType ~= "pointer")
 		if value.primitiveType == "template" then
 			template = TypeFactory.TemplateType(template, { value = value })
 			resolved = false
@@ -197,7 +198,11 @@ local function resolveTemplateArgs(t, ...)
 				if v.type.primitiveType == "template" then
 					assert(lookup[v.type.name] ~= nil, "Template argument '" .. v.type.name .. "' could not be found in the lookup")
 					ct.members[i] = { name = v.name, type = lookup[v.type.name] }
-				elseif (v.type.primitiveType == "class" or v.type.primitiveType == "array") and v.type.resolved == false then
+				elseif v.type.primitiveType == "pointer" and v.type.resolved == false then
+					assert(lookup[v.type.origin.name] ~= nil, "Template argument '" .. v.type.origin.name .. "' could not be found in the lookup")
+					local pt = TypeFactory.PointerType(lookup[v.type.origin.name], v.type.indirection)
+					ct.members[i] = { name = v.name, type = pt }
+				elseif v.type.primitiveType == "class" and v.type.resolved == false then
 					ct.members[i] = resolveTemplateMember(v, lookup)
 				end
 			end
