@@ -12,8 +12,6 @@ local function memberString(_type, ch)
 			memberType = v.type.name
 		end
 
-		print_r(v.type)
-
 		def = def .. ch.tab .. memberType .. " " .. v.name .. ";" .. ch.line
 	end
 

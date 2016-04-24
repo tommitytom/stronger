@@ -51,6 +51,10 @@ end
 local function validateTemplate(t)
 end
 
+local function validateTemplateLookup(v, name)
+	assert(v ~= nil, "Template argument '" .. name .. "' could not be found in the lookup")
+end
+
 local function validateTemplateArg(arg)
 	if arg == nil then
 		error("Template argument undefined")
@@ -175,6 +179,23 @@ local function setTemplateValue(template, value)
 	return template, resolved
 end
 
+local function resolveMembers(_type, lookup)
+	for i, v in ipairs(_type.members) do
+		if v.type.primitiveType == "template" then
+			local temp = lookup[v.type.name]
+			validateTemplateLookup(temp, v.type.name)
+			_type.members[i] = { name = v.name, type = temp }
+		elseif v.type.primitiveType == "pointer" and v.type.resolved == false then
+			local temp = lookup[v.type.origin.name]
+			validateTemplateLookup(temp, v.type.origin.name)
+			local pt = TypeFactory.PointerType(temp, v.type.indirection)
+			_type.members[i] = { name = v.name, type = pt }
+		elseif v.type.primitiveType == "class" and v.type.resolved == false then
+			_type.members[i] = resolveTemplateMember(v, lookup)
+		end
+	end
+end
+
 local function resolveTemplateArgs(t, ...)
 	if t.resolved == false then
 		local args = {...}
@@ -194,18 +215,7 @@ local function resolveTemplateArgs(t, ...)
 				end
 			end
 
-			for i, v in ipairs(ct.members) do
-				if v.type.primitiveType == "template" then
-					assert(lookup[v.type.name] ~= nil, "Template argument '" .. v.type.name .. "' could not be found in the lookup")
-					ct.members[i] = { name = v.name, type = lookup[v.type.name] }
-				elseif v.type.primitiveType == "pointer" and v.type.resolved == false then
-					assert(lookup[v.type.origin.name] ~= nil, "Template argument '" .. v.type.origin.name .. "' could not be found in the lookup")
-					local pt = TypeFactory.PointerType(lookup[v.type.origin.name], v.type.indirection)
-					ct.members[i] = { name = v.name, type = pt }
-				elseif v.type.primitiveType == "class" and v.type.resolved == false then
-					ct.members[i] = resolveTemplateMember(v, lookup)
-				end
-			end
+			resolveMembers(ct, lookup)			
 
 			if ct.resolved == true then
 				ct.name = generateTemplateClassName(ct.name, ct.templates, lookup)
@@ -232,7 +242,7 @@ local function applySystemMetatable(_type)
 			return ct
 		end,
 		__index = {
-			newArray = function(size)
+			newArray = function(t, size)
 				return ObjectFactory.createArray(_type, size)
 			end
 		}
@@ -247,19 +257,19 @@ local function applyClassMetatable(_type)
 			return ct
 		end,
 		__index = {
-			new = function(...)
-				if _type.resolved == true then
-					return ObjectFactory.create(_type, ...)
+			new = function(self, ...)
+				if self.resolved == true then
+					return ObjectFactory.create(self, ...)
 				end
 
-				error("Unable to instantiate class type '" .. _type.name .. "' as it is unresolved");
+				error("Unable to instantiate class type '" .. self.name .. "' as it is unresolved");
 			end,
-			newArray = function(size)
-				if _type.resolved == true then
-					return ObjectFactory.createArray(_type, size)
+			newArray = function(self, size)
+				if self.resolved == true then
+					return ObjectFactory.createArray(self, size)
 				end
 
-				error("Unable to instantiate array of class type '" .. _type.name .. "' as it is unresolved");
+				error("Unable to instantiate array of class type '" .. self.name .. "' as it is unresolved");
 			end,
 		},
 		__newindex = function(t, k, v)
@@ -301,7 +311,7 @@ local function class(name, super)
 		name = parsed.name,
 		cType = generateCTypeName(parsed.name),
 		super = super,
-		tempaltes = parsed.templates
+		templates = parsed.templates
 	})
 
 	applyClassMetatable(_type)

@@ -23,8 +23,18 @@ function List:add(item)
 		self.items:resize(capacity > 0 and capacity or INITIAL_CAPACITY)
 	end
 
-	self.items.set(self.length, item)
+	self.items:set(self.length, item)
 	self.length = self.length + 1
+end
+
+function List:get(idx)
+	assert(idx < self.length)
+	return self.items:get(idx)
+end
+
+function List:set(idx, v)
+	assert(idx < self.length)
+	self.items:set(idx, v)
 end
 
 function List:resize(capacity)
