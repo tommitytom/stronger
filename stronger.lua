@@ -444,21 +444,6 @@ initialize = function(_settings)
 	--class "array<ValueType, Size = 0>" { }
 end
 
-local function typeOf(obj)
-	if type(obj) == "cdata" then
-		return ObjectFactory.typeOf(obj)
-	end
-
-	assert(false)
-end
-
-local function templateOf(obj, name)
-	local t = typeOf(obj)
-	return findTemplate(t, name).value
-end
-
-
-
 local function p(_type, level)
 	local t = _type
 	if type(_type) == "string" then

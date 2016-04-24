@@ -3,7 +3,6 @@ local writer = require "writer.c"
 
 local ctypes = {}
 local arrayTypes = {}
-local typeLookup = {}
 
 local function callDestructors(_type, instance)
 	local destroy = _type.methods["destroy"];
@@ -75,12 +74,6 @@ local function addClassType(_type)
 
 	--assert(_type.size == ffi.sizeof(ctype), "Differing type sizes for " .. _type.name .. ": " .. _type.size .. ", " .. ffi.sizeof(ctype))
 	ctypes[_type.name] = ctype
-
-	local cname = tostring(ctype)
-	local refName = cname:gsub(">", " &>")
-	typeLookup[cname] = _type
-	typeLookup[refName] = _type
-
 	return ctype
 end
 
@@ -142,12 +135,6 @@ local function registerSystemType(_type)
 		ffi.cdef("typedef " .. _type.cType .. " " .. _type.name .. ";")
 		assert(_type.size == ffi.sizeof(_type.cType), "Size mismatch for " .. _type.name .. ": Def - " .. _type.size .. "   C - " .. ffi.sizeof(_type.name))
 	end
-end
-
-local function typeOf(obj)
-	local id = tostring(ffi.typeof(obj))
-	assert(typeLookup[id] ~= nil)
-	return typeLookup[id]
 end
 
 return { 
