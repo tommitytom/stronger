@@ -1,8 +1,8 @@
-local stronger = require "stronger"
-stronger.setup({ exposed = true })
-
 require "printr"
-require "examples.List"
+local s = require "stronger"
+s.setup({ exposed = true })
+
+require "containers.List"
 
 local l = List(int32):new()
 

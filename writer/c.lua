@@ -8,10 +8,6 @@ local function memberString(_type, ch)
 
 	for i, v in ipairs(_type.members) do
 		local memberType = v.type.cType
-		if v.type.primitiveType == "system" then
-			memberType = v.type.name
-		end
-
 		def = def .. ch.tab .. memberType .. " " .. v.name .. ";" .. ch.line
 	end
 

@@ -271,6 +271,20 @@ local function applyClassMetatable(_type)
 
 				error("Unable to instantiate array of class type '" .. self.name .. "' as it is unresolved");
 			end,
+			findMember = function(self, name)
+				for i,v in ipairs(self.members) do
+					if v.name == name then
+						return v
+					end
+				end
+			end,
+			findTemplate = function(self, name)
+				for i,v in ipairs(self.templates) do
+					if v.name == name then
+						return v
+					end
+				end
+			end
 		},
 		__newindex = function(t, k, v)
 			_type.methods[k] = v
@@ -407,41 +421,22 @@ initialize = function(_settings)
 	addSystemType("bool", 4)
 	addSystemType("float", 4)
 	addSystemType("double", 4)
-	addSystemType("int8", 1, "signed char")
-	addSystemType("uint8", 1, "unsigned char")
-	addSystemType("int16", 2, "signed short")
-	addSystemType("uint16", 2, "unsigned short")
-	addSystemType("int32", 4, "signed int")
-	addSystemType("uint32", 4, "unsigned int")
-	addSystemType("int64", 8, "signed long long")
-	addSystemType("uint64", 8, "unsigned long long")
-
-	if _settings.extraShortSystemTypes == true then
-		addSystemType("i8", 1, "signed char")
-		addSystemType("u8", 1, "unsigned char")
-		addSystemType("i16", 2, "signed short")
-		addSystemType("u16", 2, "unsigned short")
-		addSystemType("i32", 4, "signed int")
-		addSystemType("u32", 4, "unsigned int")
-		addSystemType("i64", 8, "signed long long")
-		addSystemType("u64", 8, "unsigned long long")
-		addSystemType("f32", 4, "float")
-		addSystemType("f64", 8, "double")
-		settings.extraShortSystemTypes = true
-	else
-		settings.extraShortSystemTypes = false
-	end
+	addSystemType("int8", 1, "int8_t")
+	addSystemType("uint8", 1, "uint8_t")
+	addSystemType("int16", 2, "int16_t")
+	addSystemType("uint16", 2, "uint16_t")
+	addSystemType("int32", 4, "int32_t")
+	addSystemType("uint32", 4, "uint32_t")
+	addSystemType("int64", 8, "int64_t")
+	addSystemType("uint64", 8, "uint64_t")
+	addSystemType("intptr", 4, "intptr_t")
+	addSystemType("uintptr", 4, "uintptr_t")
+	addSystemType("f32", 4, "float")
+	addSystemType("f64", 8, "double")
 
 	initialized = true
 
-	--class("object") {}
-	--class("array").templates("T") { }
-	--class("StaticArray").templates("T", { name = "Size", type = uint32 }) { }
-	--stronger.array.primitiveType = "array"
-	--stronger.StaticArray.primitiveType = "array"
-
-	--class("array").templates("ValueType", { ["Size"] = 0 }) { }	
-	--class "array<ValueType, Size = 0>" { }
+	class("object") {}
 end
 
 local function p(_type, level)
@@ -461,10 +456,33 @@ local function p(_type, level)
 	return TypeFactory.PointerType(t, level)
 end
 
+local function typeOf(_type)
+	if type(_type) == "string" then
+		local t = systemTypes[_type]
+		if t ~= nil then return t end
+
+		t = classTypes[_type]
+		if t ~= nil then return t end
+	elseif type(_type) == "table" then
+		if _type.primitiveType ~= nil then
+			return _type
+		end
+	elseif type(_type) == "cdata" then
+		if _type.__type ~= nil then
+			return _type.__type
+		end
+	end
+end
+
+local function typeDef(from, to)
+
+end
+
 stronger.setup = initialize
 stronger.class = class
 stronger.typeOf = typeOf
 stronger.templateOf = templateOf
 stronger.p = p
+stronger.typeDef = typeDef
 
 return stronger

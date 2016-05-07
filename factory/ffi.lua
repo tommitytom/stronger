@@ -1,6 +1,8 @@
 local ffi = require "ffi"
 local writer = require "writer.c"
 
+local debug = true
+
 local ctypes = {}
 local arrayTypes = {}
 
@@ -98,7 +100,7 @@ local function addArrayType(_type)
 		assert(false)
 	end
 
-	local arrayType = ffi.typeof(_type.name .. "[?]")
+	local arrayType = ffi.typeof(_type.cType .. "[?]")
 	arrayTypes[_type.name] = arrayType
 
 	return arrayType
@@ -132,8 +134,7 @@ end
 
 local function registerSystemType(_type)
 	if _type.cType ~= _type.name then
-		ffi.cdef("typedef " .. _type.cType .. " " .. _type.name .. ";")
-		assert(_type.size == ffi.sizeof(_type.cType), "Size mismatch for " .. _type.name .. ": Def - " .. _type.size .. "   C - " .. ffi.sizeof(_type.name))
+		assert(_type.size == ffi.sizeof(_type.cType), "Size mismatch for " .. _type.name .. ": Def - " .. _type.size .. "   C - " .. ffi.sizeof(_type.cType))
 	end
 end
 

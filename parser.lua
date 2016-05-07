@@ -19,7 +19,11 @@ local function tokenize(s)
 		local c = s:sub(idx, idx)
 		local t = tokenTypes[c]
 		if t == nil then
-			name = name .. c
+			if c:match("[%w_]") then
+				name = name .. c
+			else
+				error("Invalid character '" .. c .. "' in class name")
+			end
 		else
 			local token
 			if #name > 0 then
@@ -62,53 +66,71 @@ local function TokenIterator(items)
 			next = function(self)
 				self.idx = self.idx + 1
 				self.current = self:value()
-				return self.current
+				return self:value()
 			end
 		}
 	});
 end
 
 local function logParserError(token)
-	error("Unexpected token '" .. token.name .. "' at position " .. token.pos)
+	if token.name ~= "END" then
+		error("Unexpected token '" .. token.name .. "' at position " .. token.pos)
+	else
+		error("Unexpected end")
+	end
 end
 
 local function parseTemplates(it)
 	local templates = {}
-	while it:next().name ~= "GREATER_THAN" and it:value().name ~= "END" do
-		local template = { pointer = 0 }
+	it:next()
 
-		if it:value().name == "NAME" then
-			template.name = it:value().value
-			if it:next().name ~= "COMMA" and it:value().name ~= "GREATER_THAN" then
-				if it:value().name == "NAME" then
-					template.type = template.name
-					template.name = it:value().value
-					it:next()
-				end
+	if it:value().name ~= "GREATER_THAN" then
+		while it:value().name ~= "GREATER_THAN" do
+			local template = { pointer = 0 }
 
-				if it:value().name == "EQUALS" then
-					if it:next().name == "NAME" then
-						template.default = tonumber(it:value().value)
+			if it:value().name == "NAME" then
+				template.name = it:value().value
+				if it:next().name ~= "COMMA" and it:value().name ~= "GREATER_THAN" then
+					if it:value().name == "NAME" then
+						template.type = template.name
+						template.name = it:value().value
 						it:next()
-					else
-						logParserError(token:value())
+					end
+
+					if it:value().name == "EQUALS" then
+						if it:next().name == "NAME" then
+							template.default = tonumber(it:value().value)
+							it:next()
+						else
+							logParserError(token:value())
+						end
+					end
+
+					while it:value().name == "ASTERISK" do
+						template.pointer = template.pointer + 1
+						it:next()
+					end
+
+					if it:value().name ~= "GREATER_THAN" and it:value().name ~= "COMMA" then
+						logParserError(it:value())
+					end
+				end
+				
+				if it:value().name == "COMMA" then
+					it:next()
+					
+					if it:value().name ~= "NAME" then
+						logParserError(it:value())
 					end
 				end
 
-				while it:value().name == "ASTERISK" do
-					template.pointer = template.pointer + 1
-					it:next()
-				end
-
-				if it:value().name ~= "GREATER_THAN" and it:value().name ~= "COMMA" then
-					logParserError(it:value())
-				end
+				table.insert(templates, template)
+			else
+				logParserError(it:value())
 			end
-
-			table.insert(templates, template)
-		else
-			logParserError(it:value())
 		end
+	else
+		error("No template arguments supplied")
 	end
 
 	return templates
@@ -118,20 +140,25 @@ local function parseRoot(it)
 	local _type = { templates = {} }
 	if it:value().name == "NAME" then
 		_type.name = it:value().value
-		it:next()
+		if _type.name:sub(1, 1):match("%d") == nil then
+			it:next()
 
-		while it:value().name ~= "END" do
-			if it:value().name == "LESS_THAN" then
-				_type.templates = parseTemplates(it)
-			elseif it:value().name == "ASTERISK" then
-				_type.pointer = 0
-				while it:value().name == "ASTERISK" do
-					_type.pointer = _type.pointer + 1
+			while it:value().name ~= "END" do
+				if it:value().name == "LESS_THAN" then
+					_type.templates = parseTemplates(it)
 					it:next()
+				elseif it:value().name == "ASTERISK" then
+					_type.pointer = 0
+					while it:value().name == "ASTERISK" do
+						_type.pointer = _type.pointer + 1
+						it:next()
+					end
+				else 
+					logParserError(it:value())
 				end
-			else 
-				logParserError(it:value())
 			end
+		else
+			error("Class names can not start with a number")
 		end
 	else
 		logParserError(it:value())
