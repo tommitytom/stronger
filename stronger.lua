@@ -249,6 +249,23 @@ local function applySystemMetatable(_type)
 	})
 end
 
+local function applyPointerMetatable(_type)
+	setmetatable(_type, {
+		__index = {
+			new = function(self, ...)
+				if self.origin.resolved == true then
+					return ObjectFactory.create(self.origin, ...)
+				end
+
+				error("Unable to instantiate class type '" .. self.name .. "' as it is unresolved");
+			end,
+			newArray = function(self, size)
+				return ObjectFactory.createArray(_type, size)
+			end
+		}
+	})
+end
+
 local function applyClassMetatable(_type)
 	setmetatable(_type, {
 		__call = function(t, ...) 
@@ -288,6 +305,22 @@ local function applyClassMetatable(_type)
 		},
 		__newindex = function(t, k, v)
 			_type.methods[k] = v
+
+			if #k > 4 then
+				local s = k:sub(1, 4)
+				local n = k:sub(5)
+				local prop = _type.properties[n]
+
+				if s == "get_" then
+					prop = prop or {}
+					prop.getter = v
+				elseif s == "set_" then
+					prop = prop or {}
+					prop.setter = v
+				end
+
+				_type.properties[n] = prop
+			end
 		end
 	})
 end
@@ -356,12 +389,7 @@ local function class(name, super)
 
 					table.insert(_type.members, { name = k, type = t })
 				elseif type(v) == "table" then
-					if v.primitiveType == "pointer" then
-						assert(false)
-						--if v.
-					else
-						table.insert(_type.members, { name = k, type = v })
-					end
+					table.insert(_type.members, { name = k, type = v })
 				end
 			end
 
@@ -370,6 +398,8 @@ local function class(name, super)
 			else
 				_type.cType = nil
 			end
+
+			return _type
 		end,
 		__index = {
 			inherits = function(parent)
@@ -436,7 +466,11 @@ initialize = function(_settings)
 
 	initialized = true
 
-	class("object") {}
+	local o = class("object") {}
+
+	function o:isTypeOf(other)
+		return self.__type() == other
+	end
 end
 
 local function p(_type, level)
@@ -453,7 +487,10 @@ local function p(_type, level)
 		end
 	end
 
-	return TypeFactory.PointerType(t, level)
+	local pointerType = TypeFactory.PointerType(t, level)
+	applyPointerMetatable(pointerType)
+
+	return pointerType
 end
 
 local function typeOf(_type)
@@ -469,7 +506,7 @@ local function typeOf(_type)
 		end
 	elseif type(_type) == "cdata" then
 		if _type.__type ~= nil then
-			return _type.__type
+			return _type.__type()
 		end
 	end
 end
@@ -478,11 +515,15 @@ local function typeDef(from, to)
 
 end
 
+local function parseClass(name, fields)
+end
+
 stronger.setup = initialize
 stronger.class = class
 stronger.typeOf = typeOf
 stronger.templateOf = templateOf
 stronger.p = p
 stronger.typeDef = typeDef
+stronger.parseClass = parseClass
 
 return stronger

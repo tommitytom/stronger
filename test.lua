@@ -29,6 +29,14 @@ describe("name parser", function()
 		assert.is_true(t.templates[1].name == "T")
 	end)
 
+	it("should parse simple template pointers", function()
+		local t = parser.parse("List<T>*")
+		assert.are.same(t.name, "List")
+		assert.is_true(#t.templates == 1)
+		assert.is_true(t.templates[1].name == "T")
+		assert.is_true(t.pointer == 1)
+	end)
+
 	it("should parse simple templates with multiple arguments", function()
 		local t = parser.parse("Allocator<T, U>")
 		assert.are.same(t.name, "Allocator")
@@ -55,15 +63,22 @@ describe("name parser", function()
 	end)
 
 	it("should not allow erroneous input", function()
-		assert.has.errors(function() parser.parse("Allocator<") end)
-		assert.has.errors(function() parser.parse("Allocator<T") end)
-		assert.has.errors(function() parser.parse("123Allocator") end)
-		assert.has.errors(function() parser.parse("Allo-cator") end)
-		assert.has.errors(function() parser.parse("Allocator<>") end)
-		assert.has.errors(function() parser.parse("Allocator<T,>") end)
-		assert.has.errors(function() parser.parse("Allocator<,") end)
-		assert.has.errors(function() parser.parse("Alloc,") end)
-		assert.has.errors(function() parser.parse(",Allocator") end)
+		local invalidInput = {
+			"Allocator<",
+			"Allocator<T",
+			"123Allocator",
+			"Allo-cator",
+			"Allocator<>",
+			"Allocator<T,>",
+			"Allocator<,",
+			"Alloc,",
+			",Allocator",
+			"Allo!cator"
+		}
+
+		for i,v in ipairs(invalidInput) do
+			assert.has.errors(function() parser.parse(v) end)
+		end
 	end)
 end)
 
@@ -71,11 +86,19 @@ describe("class type creator", function()
 	it("should create basic class types", function()
 		s.class "Foo" {
 			item1 = s.int32,
-			item2 = s.float
+			item2 = s.uint32
 		}
 
 		local member1 = s.Foo:findMember("item1")
 		local member2 = s.Foo:findMember("item2")
+
+		function s.Foo:foo(v)
+			return "Foo.foo"
+		end
+
+		function s.Foo:bar(v)
+			return "Foo.bar"
+		end
 
 		assert.is_true(member1 ~= nil)
 		assert.is_true(member2 ~= nil)
@@ -84,16 +107,36 @@ describe("class type creator", function()
 		assert.is_true(s.Foo.name == "Foo")
 
 		assert.is_true(member1.type == s.int32)
-		assert.is_true(member2.type == s.float)
+		assert.is_true(member2.type == s.uint32)
 	end)
 
 	it("should create instantiatable classes", function()
 		local inst = s.Foo:new()
-		inst.item1 = 1337
-		inst.item2 = 3.14
-
 		assert.is_true(inst ~= nil)
+
+		inst.item1 = 1337
+		inst.item2 = 2
+
 		assert.is_true(inst.item1 == 1337)
-		--assert.is_true(inst.item2 == 3.14)
+		assert.is_true(inst:foo() == "Foo.foo")
+		assert.is_true(inst:bar() == "Foo.bar")
+	end)
+
+	it("should allow inheritance", function()
+		s.class("Bar", s.Foo) {
+			item3 = s.f32
+		}
+
+		function s.Bar:bar(v)
+			return "Bar.bar"
+		end
+
+		local inst = s.Bar:new()
+		inst.item1 = 999
+		inst.item2 = 2
+		inst.item3 = 3
+
+		assert.is_true(inst:foo() == "Foo.foo")
+		assert.is_true(inst:bar() == "Bar.bar")
 	end)
 end)

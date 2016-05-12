@@ -49,6 +49,7 @@ local function createClassType(data)
 		templates = data.templates,
 		members = {},
 		methods = {},
+		properties = {},
 		templateDefaults = 0,
 		size = 0,
 		resolved = #data.templates == 0,

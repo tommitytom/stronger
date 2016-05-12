@@ -6,6 +6,14 @@ local debug = true
 local ctypes = {}
 local arrayTypes = {}
 
+local function tableEmpty(t)
+	for k,v in pairs(t) do
+		return false
+	end
+
+	return true
+end
+
 local function callDestructors(_type, instance)
 	local destroy = _type.methods["destroy"];
 	if destroy ~= nil then
@@ -15,6 +23,19 @@ local function callDestructors(_type, instance)
 	if _type.parent ~= nil then
 		callDestructors(_type.parent, instance)
 	end
+end
+
+local function buildGetterSetterTable(t, getters, setters)
+	if t.parent ~= nil then
+		buildGetterSetterTable(t.parent, getters, setters)
+	end
+
+	for k, v in pairs(t.properties) do
+		getters[k] = v.getter
+		setters[k] = v.setter
+	end
+
+	return getters, setters
 end
 
 local function buildMethodTable(t, mt)
@@ -43,8 +64,53 @@ local function buildMethodTable(t, mt)
 	return mt
 end
 
+local function propertyExistError(typeName, propertyName)
+	error(typeName .. "." .. propertyName .. " does not exist")
+end
+
+local function indexMethodsGetters(methods, getters)
+	return function(self, k)
+		local p = getters[k]
+		if p ~= nil then return p(self) end
+		return methods[k]
+	end
+end
+
+local function newindexSetters(name, setters)
+	return function(self, k, v)
+		local p = setters[k]
+		if p ~= nil then
+			p(self, v)
+		else
+			propertyExistError(name, k)
+		end
+	end
+end
+
+local function createMetaTable(_type)
+	local methods = buildMethodTable(_type, {})
+	local getters, setters = buildGetterSetterTable(_type, {}, {})
+	local hasGetters, hasSetters = tableEmpty(getters) == false, tableEmpty(setters) == false
+
+	local mt = { __gc = function(instance) callDestructors(_type, instance) end }
+	if hasGetters == false and hasSetters == false then
+		mt.__index = methods
+	elseif hasGetters == true and hasSetters == false then
+		mt.__index = indexMethodsGetters(methods, getters)
+	elseif hasGetters == false and hasSetters == true then
+		mt.__index = methods
+		mt.__newindex = newindexSetters(_type.name, setters)
+	elseif hasGetters == true and hasSetters == true then
+		mt.__index = indexMethodsGetters(methods, getters)
+		mt.__newindex = newindexSetters(_type.name, setters)
+	end
+
+	return mt
+end
+
 local function addClassType(_type)
 	assert(_type.resolved == true, _type.name .. " is unresolved")
+	assert(_type.primitiveType == "class", _type.name)
 
 	-- Make sure all parents and member types have been added to the ffi
 	if _type.parent ~= nil then
@@ -54,8 +120,13 @@ local function addClassType(_type)
 	end
 
 	for i, v in ipairs(_type.members) do
-		if v.type.primitiveType == "class" and ctypes[v.type.name] == nil then
-			addClassType(v.type)
+		local memType = v.type
+		if v.type.primitiveType == "pointer" then
+			memType = v.type.origin
+		end
+		
+		if memType.primitiveType == "class" and ctypes[memType.name] == nil then
+			addClassType(memType)
 		end
 	end
 
@@ -65,14 +136,8 @@ local function addClassType(_type)
 	print(def)
 	ffi.cdef(def);
 
-	local methods = buildMethodTable(_type, {})
-
-	local ctype = ffi.metatype(_type.cType, { 
-		__index = methods,
-		__gc = function(instance)
-			callDestructors(_type, instance)
-		end
-	});
+	local mt = createMetaTable(_type)
+	local ctype = ffi.metatype(_type.cType, mt)
 
 	--assert(_type.size == ffi.sizeof(ctype), "Differing type sizes for " .. _type.name .. ": " .. _type.size .. ", " .. ffi.sizeof(ctype))
 	ctypes[_type.name] = ctype
@@ -91,13 +156,9 @@ local function addArrayType(_type)
 	end
 
 	if origin ~= nil then
-		if ctypes[origin.name] == nil then
+		if origin.primitiveType == "class" and ctypes[origin.name] == nil then
 			addClassType(origin)
 		end
-	end
-
-	if _type.primitiveType == "pointer" then
-		assert(false)
 	end
 
 	local arrayType = ffi.typeof(_type.cType .. "[?]")
