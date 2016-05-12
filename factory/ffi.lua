@@ -59,6 +59,14 @@ local function buildMethodTable(t, mt)
 				end
 			end
 		end
+
+		mt["__templateDefault"] = function(self, name)
+			for i, v in ipairs(t.templates) do
+				if v.name == name then
+					return v.default
+				end
+			end
+		end
 	end
 
 	return mt
