@@ -234,21 +234,6 @@ local function resolveTemplateArgs(t, ...)
 	end
 end
 
-local function applySystemMetatable(_type)
-	setmetatable(_type, {
-		__call = function(t, default)
-			local ct = Util.shallowCloneTable(t)
-			ct.default = default
-			return ct
-		end,
-		__index = {
-			newArray = function(t, size)
-				return ObjectFactory.createArray(_type, size)
-			end
-		}
-	})
-end
-
 local function applyPointerMetatable(_type)
 	setmetatable(_type, {
 		__index = {
@@ -261,6 +246,32 @@ local function applyPointerMetatable(_type)
 			end,
 			newArray = function(self, size)
 				return ObjectFactory.createArray(_type, size)
+			end,
+			pointer = function(self, level)
+				level = (level or 1) + _type.indirection
+				local pointerType = TypeFactory.PointerType(_type.origin, level)
+				applyPointerMetatable(pointerType)
+				return pointerType
+			end
+		}
+	})
+end
+
+local function applySystemMetatable(_type)
+	setmetatable(_type, {
+		__call = function(t, default)
+			local ct = Util.shallowCloneTable(t)
+			ct.default = default
+			return ct
+		end,
+		__index = {
+			newArray = function(t, size)
+				return ObjectFactory.createArray(_type, size)
+			end,
+			pointer = function(self, level)
+				local pointerType = TypeFactory.PointerType(_type, level)
+				applyPointerMetatable(pointerType)
+				return pointerType
 			end
 		}
 	})
@@ -274,6 +285,13 @@ local function applyClassMetatable(_type)
 			return ct
 		end,
 		__index = {
+			commit = function(self)
+				if self.resolved == true then
+					return ObjectFactory.commit(self)
+				end
+
+				error("Unable to commit class type '" .. self.name .. "' as it is unresolved");
+			end,
 			new = function(self, ...)
 				if self.resolved == true then
 					return ObjectFactory.create(self, ...)
@@ -301,6 +319,11 @@ local function applyClassMetatable(_type)
 						return v
 					end
 				end
+			end,
+			pointer = function(self, level)
+				local pointerType = TypeFactory.PointerType(_type, level)
+				applyPointerMetatable(pointerType)
+				return pointerType
 			end
 		},
 		__newindex = function(t, k, v)
@@ -357,7 +380,7 @@ local function class(name, super)
 	local _type = TypeFactory.ClassType({
 		name = parsed.name,
 		cType = generateCTypeName(parsed.name),
-		super = super,
+		super = super or stronger["object"],
 		templates = parsed.templates
 	})
 
@@ -465,12 +488,6 @@ initialize = function(_settings)
 	addSystemType("f64", 8, "double")
 
 	initialized = true
-
-	local o = class("object") {}
-
-	function o:isTypeOf(other)
-		return self.__type() == other
-	end
 end
 
 local function p(_type, level)

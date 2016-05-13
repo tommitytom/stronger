@@ -51,6 +51,10 @@ local function buildMethodTable(t, mt)
 		return t
 	end
 
+	mt["isTypeOf"] = function(self, v)
+		return v == t
+	end
+
 	if #t.templates > 0 then
 		mt["__template"] = function(self, name)
 			for i, v in ipairs(t.templates) do
@@ -175,7 +179,9 @@ local function addArrayType(_type)
 	return arrayType
 end
 
-local function create(_type, ...)
+local gcTest = {}
+
+local function commit(_type)
 	assert(_type.primitiveType == "class")
 	assert(_type.resolved == true)
 
@@ -184,13 +190,22 @@ local function create(_type, ...)
 		ctype = addClassType(_type)
 	end
 
+	return ctype
+end
+
+local function create(_type, ...)
+	local ctype = commit(_type)
 	local obj = ffi.new(ctype)
 	if _type.methods.init ~= nil then
 		_type.methods.init(obj, ...)
 	end
 
+	table.insert(gcTest, obj)
+
 	return obj
 end
+
+ffi.cdef"void *malloc(size_t size);"
 
 local function createArray(_type, size)
 	local arrayType = arrayTypes[_type.name]
@@ -198,7 +213,12 @@ local function createArray(_type, size)
 		arrayType = addArrayType(_type)
 	end
 
-	return ffi.new(arrayType, size)
+	--return ffi.C.malloc(_type.size * size)
+
+	local ret = ffi.new(arrayType, size)
+	table.insert(gcTest, ret)
+
+	return ret
 end
 
 local function registerSystemType(_type)
@@ -208,6 +228,7 @@ local function registerSystemType(_type)
 end
 
 return { 
+	commit = commit,
 	create = create,
 	createArray = createArray,
 	registerSystemType = registerSystemType, 
