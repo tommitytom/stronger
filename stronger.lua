@@ -100,6 +100,7 @@ local function cloneType(t)
 
 	ct.origin = t.origin or t
 	ct.cType = ""
+	ct.cTypePtr = ""
 
 	return ct
 end
@@ -220,6 +221,7 @@ local function resolveTemplateArgs(t, ...)
 			if ct.resolved == true then
 				ct.name = generateTemplateClassName(ct.name, ct.templates, lookup)
 				ct.cType = generateCTypeName(ct.name)
+				ct.cTypePtr = ct.cType .. "*"
 				updateTypeSize(ct)
 			else
 				ct.cType = nil
@@ -247,7 +249,7 @@ local function applyPointerMetatable(_type)
 			newArray = function(self, size)
 				return ObjectFactory.createArray(_type, size)
 			end,
-			pointer = function(self, level)
+			ptr = function(self, level)
 				level = (level or 1) + _type.indirection
 				local pointerType = TypeFactory.PointerType(_type.origin, level)
 				applyPointerMetatable(pointerType)
@@ -268,7 +270,7 @@ local function applySystemMetatable(_type)
 			newArray = function(t, size)
 				return ObjectFactory.createArray(_type, size)
 			end,
-			pointer = function(self, level)
+			ptr = function(self, level)
 				local pointerType = TypeFactory.PointerType(_type, level)
 				applyPointerMetatable(pointerType)
 				return pointerType
@@ -291,6 +293,13 @@ local function applyClassMetatable(_type)
 				end
 
 				error("Unable to commit class type '" .. self.name .. "' as it is unresolved");
+			end,
+			alloc = function(self)
+				if self.resolved == true then
+					return ObjectFactory.alloc(self)
+				end
+
+				error("Unable to instantiate class type '" .. self.name .. "' as it is unresolved");
 			end,
 			new = function(self, ...)
 				if self.resolved == true then
@@ -320,7 +329,7 @@ local function applyClassMetatable(_type)
 					end
 				end
 			end,
-			pointer = function(self, level)
+			ptr = function(self, level)
 				local pointerType = TypeFactory.PointerType(_type, level)
 				applyPointerMetatable(pointerType)
 				return pointerType
@@ -377,6 +386,19 @@ local function class(name, super)
 		error("The class name '" .. parsed.name .. "' is invalid as it is already in use")
 	end
 
+	if super ~= nil then
+		if type(super) == "string" then
+			local parsedSuper = parser.parse(super)
+			assert(systemTypes[parsedSuper.name] == nil)
+			super = classTypes[parsedSuper.name]
+
+			if #super.templates > 0 then
+			end
+		end
+
+		validateParent(super)
+	end
+
 	local _type = TypeFactory.ClassType({
 		name = parsed.name,
 		cType = generateCTypeName(parsed.name),
@@ -403,7 +425,9 @@ local function class(name, super)
 					local t = getType(parsed.name)
 					if t == nil then
 						t = findTemplate(_type, parsed.name)
-						assert(t ~= nil)
+						if t == nil then
+							error("The type or template argument '" .. parsed.name .. "' does not exist")
+						end
 					end
 
 					if parsed.pointer ~= nil then
@@ -471,6 +495,7 @@ initialize = function(_settings)
 		settings.cPrefix = _settings.cPrefix
 	end
 
+	addSystemType("char", 1)
 	addSystemType("bool", 4)
 	addSystemType("float", 4)
 	addSystemType("double", 4)
@@ -535,6 +560,11 @@ end
 local function parseClass(name, fields)
 end
 
+local function setAllocator(_type, allocator)
+	_type = typeOf(_type)
+	ObjectFactory.setAllocator(_type, allocator)
+end
+
 stronger.setup = initialize
 stronger.class = class
 stronger.typeOf = typeOf
@@ -542,5 +572,6 @@ stronger.templateOf = templateOf
 stronger.p = p
 stronger.typeDef = typeDef
 stronger.parseClass = parseClass
+stronger.setAllocator = setAllocator
 
 return stronger

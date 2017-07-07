@@ -6,6 +6,7 @@ local function createSystemType(name, size, cType)
 		name = name,
 		size = size,
 		cType = cType or name,
+		cTypePtr = (cType or name) .. "*",
 		resolved = true
 	}
 end
@@ -45,6 +46,7 @@ local function createClassType(data)
 		primitiveType = "class",
 		name = data.name,
 		cType = data.cType,
+		cTypePtr = data.cType .. "*",
 		parent = data.super or object,
 		templates = data.templates,
 		members = {},
@@ -52,7 +54,7 @@ local function createClassType(data)
 		properties = {},
 		templateDefaults = 0,
 		size = 0,
-		resolved = #data.templates == 0,
+		resolved = #data.templates == 0
 	}
 end
 
@@ -79,6 +81,7 @@ local function createPointerType(origin, indirection)
 		primitiveType = "pointer",
 		name = name,
 		cType = cType,
+		cTypePtr = cType and cType .. "*" or nil,
 		origin = origin,
 		indirection = indirection,
 		size = POINTER_SIZE,

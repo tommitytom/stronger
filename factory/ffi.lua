@@ -5,6 +5,13 @@ local debug = true
 
 local ctypes = {}
 local arrayTypes = {}
+local allocators = {}
+
+local defaultAllocator = {
+	alloc = function(_type)
+		return ffi.new(ctypes[_type.name])
+	end
+}
 
 local function tableEmpty(t)
 	for k,v in pairs(t) do
@@ -90,6 +97,7 @@ end
 
 local function newindexSetters(name, setters)
 	return function(self, k, v)
+		--print("SETTER", name .. "." .. k .. " = " .. tostring(v))
 		local p = setters[k]
 		if p ~= nil then
 			p(self, v)
@@ -150,7 +158,7 @@ local function addClassType(_type)
 
 	local mt = createMetaTable(_type)
 	local ctype = ffi.metatype(_type.cType, mt)
-
+	
 	--assert(_type.size == ffi.sizeof(ctype), "Differing type sizes for " .. _type.name .. ": " .. _type.size .. ", " .. ffi.sizeof(ctype))
 	ctypes[_type.name] = ctype
 	return ctype
@@ -181,31 +189,52 @@ end
 
 local gcTest = {}
 
+local function setAllocator(_type, allocator)
+	allocators[_type.name] = allocator
+end
+
 local function commit(_type)
 	assert(_type.primitiveType == "class")
 	assert(_type.resolved == true)
 
 	local ctype = ctypes[_type.name]
 	if ctype == nil then
-		ctype = addClassType(_type)
+		addClassType(_type)
 	end
-
-	return ctype
 end
 
-local function create(_type, ...)
-	local ctype = commit(_type)
-	local obj = ffi.new(ctype)
-	if _type.methods.init ~= nil then
-		_type.methods.init(obj, ...)
+local function alloc(_type, ...)
+	commit(_type)
+
+	local obj	
+	local allocator = allocators[_type.name]
+	
+	if allocator ~= nil then
+		obj = allocator.alloc(_type)
+	else
+		obj = defaultAllocator.alloc(_type)
 	end
 
 	table.insert(gcTest, obj)
-
 	return obj
 end
 
-ffi.cdef"void *malloc(size_t size);"
+local function construct(obj, ...)
+	local _type = obj:__type()
+	if _type.methods.init ~= nil then
+		_type.methods.init(obj, ...)
+	end
+end
+
+local function create(_type, ...)
+	local obj = alloc(_type)
+
+	if _type.methods.init ~= nil then
+		_type.methods.init(obj, ...)
+	end
+	
+	return obj
+end
 
 local function createArray(_type, size)
 	local arrayType = arrayTypes[_type.name]
@@ -229,6 +258,8 @@ end
 
 return { 
 	commit = commit,
+	alloc = alloc,
+	construct = construct,
 	create = create,
 	createArray = createArray,
 	registerSystemType = registerSystemType, 
