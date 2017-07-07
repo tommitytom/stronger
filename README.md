@@ -53,7 +53,7 @@ s.setup({ exposed = true }) -- exposes to the global scope
 The following system types are available: `bool`, `char`, `float`, `double`, `f32`, `f64`, `int8`, `uint8`, `int16`, `uint16`, `int32`, `uint32`, `int64`, `uint64`, `intptr`, `uintptr`
 
 ### Garbage collection
-Since objects are instantiated using malloc() this also means that you need to 
+Since objects are instantiated using malloc() this also means that you need to clean up your garbage!
 
 ## Basic class
 ```lua
@@ -174,7 +174,7 @@ function Cat:talk()
 	return "Meooow!"
 end
 
-function Dog:get_speed()
+function Cat:get_speed()
 	return 30 - self.age
 end
 
@@ -215,7 +215,7 @@ Multiple levels of indirection are supported
 ```lua
 class "Player" {
 	currentGun = p(Gun),
-	guns = p(Gun, 2)
+	guns = p(Gun, 2) -- Second parameter is indirection level
 }
 
 class "Player" {
