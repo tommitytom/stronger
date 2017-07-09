@@ -194,11 +194,11 @@ print(cat.speed) -- 25
 
 ## Pointers
 Pointers can be created and are to be used in the same way they would be used in C or C++.  When you call `Type:new()` it actually returns a pointer to the object.
-Pointers to types can be created with the `p()` function or provided as a string.
+Pointers to types can be created with the `ptr()` method or provided as a string.
 ```lua
 -- Using the p() function
 class "Player" {
-	controller = p(XboxController)
+	controller = XboxController:ptr()
 }
 
 -- Using a string
@@ -214,8 +214,8 @@ player.controller = controller
 Multiple levels of indirection are supported
 ```lua
 class "Player" {
-	currentGun = p(Gun),
-	guns = p(Gun, 2) -- Second parameter is indirection level
+	currentGun = Gun:ptr(),
+	guns = Gun:ptr(2) -- The supplied argument defines the indirection level
 }
 
 class "Player" {
@@ -285,6 +285,32 @@ local pos = Vector2:new()
 pos.__type().name == "Vector2*"
 ```
 
+## How
+Since a lot of RTTI information is generated, that information is used to generate C structs based on the class definitions.
+
+Given the Lua class definition:
+```lua
+class "AudioBuffer<T>" {
+	buffers = "T**",
+	channelCount = int32,
+	length = int32,
+	ownsData = bool
+}
+
+local buffer = AudioBuffer(f64):new()
+```
+The following C struct is created and loaded in to the LuaJIT FFI:
+```c
+typedef struct {
+	double** buffers;
+	int32_t channelCount;
+	int32_t length;
+	bool ownsData;
+} AudioBuffer_double;
+```
+
+The call to `AudioBuffer(f64):new()` is actually instantiating an instance of that C struct, and applying a Lua metatable to it (which allows us to add functions to classes).
+
 ## Why/Alternatives
 This library was created to solve a two very specific problems:
 1. To allow for runtime compilable Lua without having a persistence layer.  The advantage of this library is it allows all objects that are created to survive even when the Lua context is destroyed, since they are ctype objects and not first class Lua objects.  A new Lua context can be constructed and the data from the previous context can be given to it with a simple pointer copy.
@@ -295,6 +321,7 @@ The runtime compilable aspect is mainly for use in real time audio and graphics 
 There are a number of different alternatives to this library should you be looking for other class libraries or ways of making your data a bit more type safe:
 * [TypedLua](https://github.com/andremm/typedlua) - Optional full typing for Lua, though you still have to roll your own classes.  There is a fork [here](https://github.com/kevinclancy/typedlua) that has preliminary support for classes but support seems minimal.  As far as I am aware at this time there are no IDE plugins that allow for static analysis.
 * [Terra](http://terralang.org/) - A low-level system programming language that is designed to interoperate seamlessly with the Lua programming language.  Includes static typing for functions and variables.  Roll your own classes.
+* [LuaJIT](http://luajit.org/ext_ffi_semantics.html) - LuaJIT itself supports parameterized types when defining C structs.  See the FFI semantics page for more details.
 
 ## Contact
 Author - Tom Yaxley / _tommitytom at gmail dot com_
