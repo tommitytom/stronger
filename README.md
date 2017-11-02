@@ -33,8 +33,9 @@ Strongly typed LuaJIT class library that utilizes the LuaJIT FFI
 4. [Pointers](#pointers)
 5. [Templates](#templates)
 6. [RTTI](#rtti)
-7. [Why/Alternatives](#why)
-8. [Contact](#contact)
+7. [How](#how)
+8. [Why/Alternatives](#why)
+9. [Contact](#contact)
 
 
 ## Basic Usage
